@@ -10,6 +10,10 @@ import {
   remaining,
   removePart,
   ruleProblems,
+  sanitizeBoard,
+  layoutOf,
+  wirePaths,
+  LAYOUT,
 } from '../src/board.js';
 import { COMBINATIONAL_STAGES } from '../src/stages.js';
 
@@ -169,4 +173,62 @@ test('水が届く順番：ぐるぐる回る水路があると null', () => {
     [[outPin('p2'), pin('p1', 'in0')], [outPin('p1'), pin('p2', 'in0')]],
   );
   assert.equal(flowLevels(board, s), null);
+});
+
+test('古い盤面を読み込んでも、ステージにない蛇口・出口・仕掛けへの水路は消える', () => {
+  const s = stage(3); // 蛇口A、花だん b1、天野君1つ
+  const old = {
+    parts: [
+      { id: 'p1', type: 'AND', x: 300, y: 100 },
+      { id: 'p2', type: 'NOT', x: 300, y: 200 },
+      { id: 'p3', type: 'NOT', x: 300, y: 300 },
+    ],
+    wires: [
+      { from: A, to: pin('p1', 'in0') },
+      { from: B, to: pin('p2', 'in0') },
+      { from: A, to: pin('p2', 'in0') },
+      { from: outPin('p2'), to: out('out') },
+      { from: outPin('p2'), to: out('b1') },
+    ],
+  };
+  assert.deepEqual(sanitizeBoard(old, s), {
+    parts: [{ id: 'p2', type: 'NOT', x: 300, y: 200 }],
+    wires: [
+      { from: A, to: pin('p2', 'in0') },
+      { from: outPin('p2'), to: out('b1') },
+    ],
+  });
+  assert.deepEqual(sanitizeBoard(null, s), createBoard());
+});
+
+test('庭は、仕掛けが3つ以上のステージで横に広がり、出口は右端に寄る', () => {
+  assert.equal(layoutOf(stage(5)).width, LAYOUT.width); // 仕掛け1つ
+  const wide = layoutOf(stage(12)); // 仕掛け4つ
+  assert.ok(wide.width > layoutOf(stage(11)).width); // 仕掛け3つ
+  assert.ok(layoutOf(stage(11)).width > LAYOUT.width);
+  assert.equal(wide.width - wide.outletX, LAYOUT.width - LAYOUT.outletX);
+  // 広い庭では、仕掛けをもっと右まで置ける
+  const board = addPart(createBoard(), 'NOT', 2000, 100, wide);
+  assert.ok(board.parts[0].x > LAYOUT.outletX);
+});
+
+test('別の水が流れる水路は、縦の線が重ならないようにずらす', () => {
+  const s = stage(12);
+  const C = { faucet: 'C' };
+  // 3つの蛇口から、同じ高さに置いた仕掛けへ。真ん中で曲がると縦の線が重なる
+  const board = build(
+    [['NOT', 400, 160], ['NOT', 400, 160], ['NOT', 400, 160]],
+    [[A, pin('p1', 'in0')], [B, pin('p2', 'in0')], [C, pin('p3', 'in0')]],
+  );
+  const xs = wirePaths(s, board).map((path) => path.x);
+  for (let i = 0; i < xs.length; i++) {
+    for (let j = i + 1; j < xs.length; j++) assert.ok(Math.abs(xs[i] - xs[j]) >= 14, `${xs}`);
+  }
+});
+
+test('同じ出口から分かれた水路は、同じ縦の線を通ってよい', () => {
+  const s = stage(12);
+  const board = build([['NOT', 400, 160], ['NOT', 400, 160]], [[A, pin('p1', 'in0')], [A, pin('p2', 'in0')]]);
+  const [first, second] = wirePaths(s, board);
+  assert.equal(first.x, second.x);
 });

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { COMBINATIONAL_STAGES } from '../src/stages.js';
 import { CHARACTERS } from '../src/characters.js';
-import { evaluate } from '../src/logic.js';
+import { checkCircuit, evaluate } from '../src/logic.js';
 
 const refsOf = (solution) => [
   ...solution.gates.flatMap((gate) => gate.inputs),
@@ -62,4 +62,11 @@ test('紹介カードの表は、仕掛けの本当の動きと同じ', () => {
       assert.equal(evaluate(circuit, values).out, Boolean(output), `${type} ${inputs}`);
     }
   }
+});
+
+test('見えない庭は後半のステージだけで、最初の見えない庭で紹介される', () => {
+  const hidden = COMBINATIONAL_STAGES.filter((stage) => stage.hidden);
+  assert.ok(hidden.length >= 2);
+  assert.ok(hidden[0].intro.includes('fog'));
+  assert.ok(hidden[0].no > COMBINATIONAL_STAGES.length / 2);
 });

@@ -2,7 +2,7 @@
 // 状態はすべて新しい値を返す（元の盤面は変えない）。元に戻す機能に使うため。
 import { GATE_ARITY, checkCircuit, solve } from './logic.js';
 
-// 庭の大きさと置き場所（画面の単位は px）。
+// 庭の大きさと置き場所（画面の単位は px）。仕掛けが2つまでのステージの大きさ。
 export const LAYOUT = {
   width: 700,
   height: 480,
@@ -14,6 +14,16 @@ export const LAYOUT = {
   rowFirst: 40,
   rowGap: 150,
 };
+
+// ステージに合わせた庭の大きさ。仕掛けが3つ以上あるステージは、1つ増えるごとに横へ広げる。
+// 出口は右端に寄せる。
+const EXTRA_WIDTH_PER_PART = 160;
+
+export function layoutOf(stage) {
+  const parts = Object.values(stage.tray).reduce((sum, count) => sum + count, 0);
+  const width = LAYOUT.width + EXTRA_WIDTH_PER_PART * Math.max(0, parts - 2);
+  return { ...LAYOUT, width, outletX: width - (LAYOUT.width - LAYOUT.outletX) };
+}
 
 export const FAUCETS = ['A', 'B', 'C'];
 export const PART_NAMES = { NOT: '天野君', AND: 'カタブツ', OR: 'イエスマン', XOR: '多様性好き' };
@@ -54,22 +64,23 @@ export function remaining(board, stage, type) {
 }
 
 const snap = (value) => Math.round(value / SNAP) * SNAP;
-const clampX = (x) => Math.min(Math.max(x, 150), LAYOUT.outletX - 30 - LAYOUT.partWidth);
-const clampY = (y) => Math.min(Math.max(y, 10), LAYOUT.height - LAYOUT.partHeight - 10);
+const clampX = (x, L) => Math.min(Math.max(x, 150), L.outletX - 30 - L.partWidth);
+const clampY = (y, L) => Math.min(Math.max(y, 10), L.height - L.partHeight - 10);
 
 function nextPartId(board) {
   const largest = board.parts.reduce((max, part) => Math.max(max, Number(part.id.slice(1))), 0);
   return `p${largest + 1}`;
 }
 
-export function addPart(board, type, x, y) {
-  const part = { id: nextPartId(board), type, x: clampX(snap(x)), y: clampY(snap(y)) };
+// layout は庭の大きさ（layoutOf(stage)）。仕掛けが庭からはみ出さないようにする。
+export function addPart(board, type, x, y, layout = LAYOUT) {
+  const part = { id: nextPartId(board), type, x: clampX(snap(x), layout), y: clampY(snap(y), layout) };
   return { ...board, parts: [...board.parts, part] };
 }
 
-export function movePart(board, id, x, y) {
+export function movePart(board, id, x, y, layout = LAYOUT) {
   const parts = board.parts.map((part) =>
-    part.id === id ? { ...part, x: clampX(snap(x)), y: clampY(snap(y)) } : part,
+    part.id === id ? { ...part, x: clampX(snap(x), layout), y: clampY(snap(y), layout) } : part,
   );
   return { ...board, parts };
 }
@@ -102,7 +113,7 @@ export function disconnect(board, to) {
 
 // 画面上の端の位置（水路の始点・終点、ピンの置き場所）。
 export function pinPosition(stage, board, end) {
-  const L = LAYOUT;
+  const L = layoutOf(stage);
   if ('faucet' in end) {
     return { x: L.faucetX + L.faucetWidth, y: rowTop(FAUCETS.indexOf(end.faucet)) + 25 };
   }
@@ -114,6 +125,36 @@ export function pinPosition(stage, board, end) {
   const pins = pinsOf(part.type);
   const offsets = pins.length === 1 ? [25] : [15, 35];
   return { x: part.x, y: part.y + offsets[pins.indexOf(end.pin)] };
+}
+
+// 水路の通り道。蛇口や仕掛けの出口から横へ出て、途中で縦に曲がり、入口へ横から入る。
+// 曲がる場所は始点と終点の真ん中。ただし、別の水が流れる縦の線と重なりそうなときは、
+// 少しずつずらして見分けられるようにする（同じ出口から分かれた水路は重なってよい）。
+const LANE_GAP = 14;
+
+export function wirePaths(stage, board) {
+  const lanes = []; // 置いた縦の線 { x, top, bottom, from }
+  return board.wires.map((wire) => {
+    const a = pinPosition(stage, board, wire.from);
+    const b = pinPosition(stage, board, wire.to);
+    const top = Math.min(a.y, b.y);
+    const bottom = Math.max(a.y, b.y);
+    const from = JSON.stringify(wire.from);
+    const base = Math.round((a.x + b.x) / 2);
+    const clash = (x) =>
+      lanes.some(
+        (lane) => lane.from !== from && Math.abs(lane.x - x) < LANE_GAP && lane.top <= bottom && top <= lane.bottom,
+      );
+    let x = base;
+    if (a.y !== b.y) {
+      // 真ん中から右・左へ交互にずらして、空いている場所を探す
+      for (let step = 1; step <= 12 && clash(x); step++) {
+        x = base + Math.ceil(step / 2) * LANE_GAP * (step % 2 ? 1 : -1);
+      }
+      lanes.push({ x, top, bottom, from });
+    }
+    return { a, b, x, d: `M${a.x} ${a.y} H${x} V${b.y} H${b.x}` };
+  });
 }
 
 // 盤面を、評価できる回路の形に直す。つながっていない入口は水がないもの（0）として扱う。
@@ -135,9 +176,28 @@ export function toCircuit(board, stage) {
   };
 }
 
-// ステージの開け方で、出口ごとの答えと照らし合わせる。水路がぐるぐる回るときは例外になる。
+// 予定表の全部の時間で、出口ごとの答えと照らし合わせる。水路がぐるぐる回るときは例外になる。
 export function checkBoard(board, stage) {
   return checkCircuit(toCircuit(board, stage), stage);
+}
+
+// 保存してあった盤面のうち、このステージにないもの（蛇口・出口・仕掛け箱にない仕掛け）を取り除く。
+// ステージの中身が変わったあとに古い盤面を読み込んでも、行き先のない水路が描かれないようにする。
+export function sanitizeBoard(board, stage) {
+  if (!board || !Array.isArray(board.parts) || !Array.isArray(board.wires)) return createBoard();
+  const counts = {};
+  const parts = board.parts.filter((part) => {
+    counts[part.type] = (counts[part.type] ?? 0) + 1;
+    return counts[part.type] <= (stage.tray[part.type] ?? 0);
+  });
+  const partIds = new Set(parts.map((part) => part.id));
+  const exists = (end) => {
+    if ('faucet' in end) return stage.inputs.includes(end.faucet);
+    if ('outlet' in end) return stage.outlets.includes(end.outlet);
+    return partIds.has(end.part);
+  };
+  const wires = board.wires.filter((wire) => exists(wire.from) && exists(wire.to));
+  return { parts, wires };
 }
 
 // 蛇口の開け方ごとに、仕掛けの出力・出口・水路に水が流れているかを返す。

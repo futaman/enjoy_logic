@@ -13,7 +13,7 @@ import {
 import { CHARACTERS } from './characters.js';
 import { TIME_NAMES, expectedOf } from './logic.js';
 import {
-  LAYOUT,
+  layoutOf,
   FAUCETS,
   PART_NAMES,
   addPart,
@@ -31,16 +31,30 @@ import {
   removePart,
   rowTop,
   ruleProblems,
+  sanitizeBoard,
+  wirePaths,
   sameEnd,
 } from './board.js';
 
-const SAVE_KEY = 'enjoy_logic.progress.v2'; // v2：ステージを予定表（朝・昼・夕方・夜）つきに作り直した
-const OLD_SAVE_KEY = 'enjoy_logic.progress.v1';
+// ステージを予定表（朝・昼・夕方・夜）つきに作り直したので、保存の場所も新しくした。
+// 前の版（v1・v2）のステージの進み具合は使わない（おやじ図鑑・設定・見たカードだけ引き継ぐ）。
+const SAVE_KEY = 'enjoy_logic.progress.v3';
+const OLD_SAVE_KEYS = ['enjoy_logic.progress.v2', 'enjoy_logic.progress.v1'];
+// 時間はすべて「ふつう」の速さのときの長さ。実際には、選んだ速さの倍率をかける（speedMs）。
 const TIME_OK_MS = 700; // 1つの時間がうまくいったあと、次の時間に進むまでの間
 const JUDGE_STEP_MS = 300; // 実行のとき、水が1段進む時間
 const KIND_NAMES = { flower: '花', oyaji: 'おやじ' };
 const REDUCED_MOTION = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 const OYAJI_SHOW_MS = 2600; // おやじが怒る演出の長さ（タップで飛ばせる）
+// アニメーションの速さ。初めは「ゆっくり」にして、慣れたら上げられる。scale は時間の倍率。
+const SPEEDS = [
+  { id: 'slow', label: 'ゆっくり', scale: 1.8 },
+  { id: 'normal', label: 'ふつう', scale: 1 },
+  { id: 'fast', label: 'はやい', scale: 0.5 },
+];
+const DEFAULT_SPEED = 'slow';
+// 開発中は、クリアしていないステージも全部選べるようにしておく（公開するときは false にする）。
+const UNLOCK_ALL_STAGES = true;
 const MIN_SCALE = 0.8; // 文字が読める最小の大きさ（小さい画面では横にスクロールして庭を動かす）
 const MAX_SCALE = 1.3;
 
@@ -79,16 +93,19 @@ const state = {
 
 const currentStage = () => COMBINATIONAL_STAGES[state.stageIndex];
 const currentTime = () => currentStage().times[state.timeIndex];
+const layout = () => layoutOf(currentStage()); // 今のステージの庭の大きさ
 
 // 保存できなくても遊べるように、読み書きは try で囲む。
-// 前の版（v1）のステージとは中身が違うので、ステージの進み具合は引き継がず、おやじ図鑑・設定・見たカードだけ引き継ぐ。
 function loadProgress() {
   const empty = { stages: {}, oyaji: [], settings: {}, cardsSeen: [] };
   try {
     const saved = JSON.parse(localStorage.getItem(SAVE_KEY));
     if (saved?.stages) return { ...empty, ...saved };
-    const old = JSON.parse(localStorage.getItem(OLD_SAVE_KEY));
-    return old ? { ...empty, oyaji: old.oyaji ?? [], settings: old.settings ?? {}, cardsSeen: old.cardsSeen ?? [] } : empty;
+    for (const key of OLD_SAVE_KEYS) {
+      const old = JSON.parse(localStorage.getItem(key));
+      if (old) return { ...empty, oyaji: old.oyaji ?? [], settings: old.settings ?? {}, cardsSeen: old.cardsSeen ?? [] };
+    }
+    return empty;
   } catch {
     return empty;
   }
@@ -110,6 +127,17 @@ function stageProgress(no) {
 // 画面の揺れと点滅を弱める（端末の「動きを減らす」設定のときは、初めから弱める）。
 const calm = () => REDUCED_MOTION || Boolean(state.progress.settings.calm);
 
+const currentSpeed = () => SPEEDS.find((speed) => speed.id === state.progress.settings.speed) ?? SPEEDS.find((speed) => speed.id === DEFAULT_SPEED);
+const speedMs = (ms) => Math.round(ms * currentSpeed().scale);
+
+// 速さを1段ずつ切り替える（ゆっくり → ふつう → はやい → ゆっくり …）。
+function cycleSpeed() {
+  const index = SPEEDS.indexOf(currentSpeed());
+  state.progress.settings.speed = SPEEDS[(index + 1) % SPEEDS.length].id;
+  saveProgress();
+  render();
+}
+
 // ---------- 画面の切り替え・拡大 ----------
 
 function showScreen(name) {
@@ -126,15 +154,18 @@ function setScale(scale) {
   garden.style.setProperty('--s', scale);
   garden.style.transform = `scale(${scale})`;
   // 拡大した分の大きさを、スクロールの範囲として確保する
-  $('#garden-box').style.width = `${LAYOUT.width * scale}px`;
-  $('#garden-box').style.height = `${LAYOUT.height * scale}px`;
+  const L = layout();
+  garden.style.width = `${L.width}px`;
+  garden.style.height = `${L.height}px`;
+  $('#garden-box').style.width = `${L.width * scale}px`;
+  $('#garden-box').style.height = `${L.height * scale}px`;
 }
 
 // 幅に合わせる（小さい画面では最小の大きさまで）。拡大・縮小はこの大きさの0.5〜2倍。
 // 大きい画面でも、下のボタンや仕掛け箱が見えるように、画面の高さの6割までにする。
 function fitWidth(minimum = MIN_SCALE) {
-  const byWidth = wrap.clientWidth / LAYOUT.width;
-  const byHeight = (window.innerHeight * 0.6) / LAYOUT.height;
+  const byWidth = wrap.clientWidth / layout().width;
+  const byHeight = (window.innerHeight * 0.6) / layout().height;
   state.baseScale = Math.max(Math.min(byWidth, byHeight, MAX_SCALE), minimum);
   state.zoom = 1;
   setScale(state.baseScale);
@@ -163,7 +194,7 @@ function zoomAt(zoom, clientX, clientY) {
 function openStage(index) {
   state.stageIndex = index;
   const stage = currentStage();
-  state.board = stageProgress(stage.no).board ?? createBoard();
+  state.board = sanitizeBoard(stageProgress(stage.no).board, stage);
   state.timesSeen = [];
   showTime(0);
   state.undo = [];
@@ -305,7 +336,7 @@ function stopReveal() {
 async function playReveal(stepMs) {
   const token = ++state.revealToken;
   const levels = flowLevels(state.board, currentStage());
-  const ms = REDUCED_MOTION ? 0 : stepMs;
+  const ms = REDUCED_MOTION ? 0 : speedMs(stepMs);
   garden.style.setProperty('--step', `${ms}ms`);
   if (levels && ms > 0) {
     const last = 2 * Math.max(1, ...Object.values(levels.parts), ...Object.values(levels.outlets));
@@ -360,20 +391,16 @@ async function judge() {
       state.run = { kind: null, host: null, message: `${TIME_NAMES[time.time]}はうまくいった！次は${TIME_NAMES[stage.times[index + 1].time]}。` };
       render();
       popText(`${TIME_NAMES[time.time]} OK！`, 'grow');
-      await pause(state.skip || REDUCED_MOTION ? 0 : TIME_OK_MS);
+      await pause(state.skip || REDUCED_MOTION ? 0 : speedMs(TIME_OK_MS));
     }
   }
   if (!failed) {
+    // 花は一気に大きく育ち、庭がひまわりの森になる
     const all = stage.times.length > 1 ? 'どの時間も、' : '';
-    state.run = { kind: 'ok', host: 'やったね！', message: `${all}花には水が届いて、おやじはぐっすり寝たまま。`, growth: 0 };
-    // 花が段階を追って大きくなり、最後はひまわりの森になる
-    const hasFlower = Object.values(expectedOf(currentTime())).some(Boolean);
-    for (let level = 1; hasFlower && level <= 4; level++) {
-      state.run.growth = level;
-      render();
-      popText(level === 4 ? 'ひまわりの森！！' : 'ポン！'.repeat(level), 'grow');
-      await pause(state.skip || REDUCED_MOTION ? 0 : 550);
-    }
+    state.run = { kind: 'ok', host: 'やったね！', message: `${all}花には水が届いて、おやじはぐっすり寝たまま。`, growth: 4 };
+    render();
+    if (Object.values(expectedOf(currentTime())).some(Boolean)) popText('ポン！', 'grow');
+    await pause(state.skip || REDUCED_MOTION ? 0 : speedMs(1000));
   } else {
     const { time, expected, actual } = failed;
     const kind = failureKind(expected, actual);
@@ -393,7 +420,7 @@ async function judge() {
   state.judging = false;
   render();
   if (!failed) {
-    await pause(REDUCED_MOTION ? 0 : 500);
+    await pause(REDUCED_MOTION ? 0 : speedMs(500));
     finishStage();
   }
 }
@@ -416,6 +443,8 @@ function showOyaji(anger) {
     <p class="caption">${isNew ? '【おやじ図鑑に登録】' : ''}${anger.title}</p>
     <p class="skip">タップで つぎへ</p>`;
   show.hidden = false;
+  // おやじの動き（CSS のアニメーション）も、選んだ速さに合わせる
+  for (const animation of show.getAnimations({ subtree: true })) animation.playbackRate = 1 / currentSpeed().scale;
   if (!calm() && ['giant', 'rocket', 'daibutsu', 'clone'].includes(anger.id)) {
     document.body.classList.remove('shake');
     void document.body.offsetWidth; // 揺れのアニメーションを最初から
@@ -429,7 +458,7 @@ function showOyaji(anger) {
       document.body.classList.remove('shake');
       resolve();
     };
-    const timer = setTimeout(close, REDUCED_MOTION ? 1500 : OYAJI_SHOW_MS);
+    const timer = setTimeout(close, REDUCED_MOTION ? 1500 : speedMs(OYAJI_SHOW_MS));
     show.addEventListener('pointerdown', close);
   });
 }
@@ -440,8 +469,9 @@ function popText(text, kind) {
   const el = document.createElement('div');
   el.className = `pop-text ${kind}`;
   el.textContent = text;
+  el.style.animationDuration = `${speedMs(1200)}ms`;
   wrap.append(el);
-  setTimeout(() => el.remove(), 1200);
+  setTimeout(() => el.remove(), speedMs(1200));
 }
 
 function finishStage() {
@@ -477,9 +507,16 @@ function showClear(stars) {
 
 // ---------- 描画 ----------
 
+// 見えない庭で、まだ水を流していない（準備完了を押していない）とき。
+function veiled(stage) {
+  return stage.hidden && !state.judging && !(state.run && state.run.kind !== 'rule');
+}
+
 function render() {
   const stage = currentStage();
-  const live = currentLive();
+  // 見えない庭では、水を流すまで水路の水を見せない（蛇口の開け閉めは見せる）
+  const live = veiled(stage) ? null : currentLive();
+  wrap.classList.toggle('veiled', veiled(stage));
   $('#title').textContent = `${stage.no}. ${stage.title}`;
   $('#lesson').textContent = stage.lesson;
   $('#mission').textContent = `目標：${stage.mission}`;
@@ -574,7 +611,7 @@ function renderGarden(stage, live) {
     const open = Boolean(state.faucets[name]);
     const top = rowTop(FAUCETS.indexOf(name));
     boxes.push(
-      `<div class="box faucet ${open ? 'open' : ''}" data-faucet="${name}" style="left:${LAYOUT.faucetX}px;top:${top}px">${faucetIcon(open)}<span class="label"><span class="name">蛇口${name}</span><span class="sub">${open ? '開いている' : '閉じている'}</span></span></div>`,
+      `<div class="box faucet ${open ? 'open' : ''}" data-faucet="${name}" style="left:${layout().faucetX}px;top:${top}px">${faucetIcon(open)}<span class="label"><span class="name">蛇口${name}</span><span class="sub">${open ? '開いている' : '閉じている'}</span></span></div>`,
     );
     pins.push(pinHtml(stage, { faucet: name }, open));
   });
@@ -625,7 +662,7 @@ function renderGarden(stage, live) {
       problemOutlets.includes(name) ? 'problem' : '',
     ];
     boxes.push(
-      `<div class="${classes.join(' ')}" data-outlet="${name}" style="left:${LAYOUT.outletX}px;top:${rowTop(index)}px;${grow}">${picture}<span class="label"><span class="name">${outletLabel(stage, name)}</span><span class="sub">${goal}</span></span>${mark}${say}</div>`,
+      `<div class="${classes.join(' ')}" data-outlet="${name}" style="left:${layout().outletX}px;top:${rowTop(index)}px;${grow}">${picture}<span class="label"><span class="name">${outletLabel(stage, name)}</span><span class="sub">${goal}</span></span>${mark}${say}</div>`,
     );
     pins.push(pinHtml(stage, { outlet: name }, Boolean(water)));
   });
@@ -653,12 +690,10 @@ function renderGarden(stage, live) {
     pins.push(pinHtml(stage, { part: part.id, pin: 'out' }, wet));
   });
 
+  const paths = wirePaths(stage, state.board);
   const wires = state.board.wires
     .map((wire, i) => {
-      const a = pinPosition(stage, state.board, wire.from);
-      const b = pinPosition(stage, state.board, wire.to);
-      const middle = (a.x + b.x) / 2;
-      const d = `M${a.x} ${a.y} H${middle} V${b.y} H${b.x}`;
+      const { d } = paths[i];
       const half = levels ? 2 * levels.wires[i] + 1 : 0;
       const on = reached(half) && Boolean(live?.wires[i]);
       const classes = [
@@ -676,7 +711,8 @@ function renderGarden(stage, live) {
 
   // 花に続けて水をやれると、庭がひまわりの森になる
   wrap.classList.toggle('forest', state.run?.kind === 'ok' && state.run.growth >= 4);
-  garden.innerHTML = `<svg id="wires" width="${LAYOUT.width}" height="${LAYOUT.height}" viewBox="0 0 ${LAYOUT.width} ${LAYOUT.height}">${wires}</svg>${boxes.join('')}${pins.join('')}`;
+  const L = layoutOf(stage);
+  garden.innerHTML = `<svg id="wires" width="${L.width}" height="${L.height}" viewBox="0 0 ${L.width} ${L.height}">${wires}</svg>${boxes.join('')}${pins.join('')}`;
 }
 
 // 司会のじょうろの吹き出し。実行の結果と、うまくいかなかった理由を言う。
@@ -710,6 +746,7 @@ function renderToolbar() {
   $('#redo').disabled = state.judging || state.redo.length === 0;
   $('#judge').disabled = state.judging;
   $('#delete-wire').hidden = state.selectedWire === null;
+  $('#speed').textContent = `速さ：${currentSpeed().label}`;
 }
 
 function describeRef(stage, ref) {
@@ -741,7 +778,7 @@ function renderHint(stage) {
 function renderStageList() {
   $('#stage-list').innerHTML = COMBINATIONAL_STAGES.map((stage, i) => {
     const progress = state.progress.stages[stage.no];
-    const locked = i > 0 && !state.progress.stages[COMBINATIONAL_STAGES[i - 1].no]?.cleared;
+    const locked = !UNLOCK_ALL_STAGES && i > 0 && !state.progress.stages[COMBINATIONAL_STAGES[i - 1].no]?.cleared;
     const stars = progress?.stars ?? 0;
     const label = `${stage.no}. ${stage.title}`;
     const status = locked ? '（まだ開かない）' : '★'.repeat(stars) + '☆'.repeat(3 - stars);
@@ -753,6 +790,7 @@ function renderStageList() {
 
 function characterIcon(key) {
   if (key === 'faucet') return faucetIcon(true);
+  if (key === 'fog') return hostIcon();
   if (key === 'flower') return flowerIcon('bloom');
   if (key === 'oyaji') return oyajiIcon('sleep');
   if (key === 'clock') return timeIcon('morning');
@@ -818,7 +856,7 @@ const readEnd = (el) => JSON.parse(decodeURIComponent(el.dataset.end));
 
 function gardenPoint(event) {
   const rect = garden.getBoundingClientRect();
-  const scale = rect.width / LAYOUT.width;
+  const scale = rect.width / layout().width;
   return { x: (event.clientX - rect.left) / scale, y: (event.clientY - rect.top) / scale };
 }
 
@@ -848,7 +886,7 @@ function startDrag(event, drag) {
   drag.downY = event.clientY;
   drag.pointerId = event.pointerId;
   drag.moved = false;
-  drag.scale = garden.getBoundingClientRect().width / LAYOUT.width;
+  drag.scale = garden.getBoundingClientRect().width / layout().width;
   activeDrag = drag;
   if (!state.judging) stopReveal(); // 触り始めたら、水をたどる演出はやめて全部見せる
   const move = (e) => {
@@ -914,7 +952,7 @@ function onEnd(event, drag) {
       return;
     }
     if (inside(event, tray)) commit(removePart(state.board, drag.id));
-    else commit(movePart(state.board, drag.id, drag.pos.x, drag.pos.y));
+    else commit(movePart(state.board, drag.id, drag.pos.x, drag.pos.y, layout()));
     return;
   }
   if (drag.kind === 'card') {
@@ -936,7 +974,8 @@ function onEnd(event, drag) {
     }
     if (inside(event, garden)) {
       const p = gardenPoint(event);
-      commit(addPart(state.board, drag.type, p.x - LAYOUT.partWidth / 2, p.y - LAYOUT.partHeight / 2));
+      const L = layout();
+      commit(addPart(state.board, drag.type, p.x - L.partWidth / 2, p.y - L.partHeight / 2, L));
     }
   }
 }
@@ -1072,6 +1111,7 @@ $('#schedule-title').addEventListener('click', () => showCard('clock'));
 $('#undo').addEventListener('click', undo);
 $('#redo').addEventListener('click', redo);
 $('#judge').addEventListener('click', judge);
+$('#speed').addEventListener('click', cycleSpeed);
 $('#fit').addEventListener('click', () => {
   fitWidth(0);
   render();
