@@ -43,6 +43,8 @@ const state = {
   judgeRow: null,
   judgeFail: null,
   skip: false,
+  baseScale: 1,
+  zoom: 1,
   progress: loadProgress(),
 };
 
@@ -87,9 +89,29 @@ function setScale(scale) {
   $('#garden-box').style.height = `${LAYOUT.height * scale}px`;
 }
 
-// 幅に合わせる（小さい画面では最小の大きさまで）。
+// 幅に合わせる（小さい画面では最小の大きさまで）。拡大・縮小はこの大きさの0.5〜2倍。
 function fitWidth(minimum = MIN_SCALE) {
-  setScale(Math.max(wrap.clientWidth / LAYOUT.width, minimum));
+  state.baseScale = Math.max(wrap.clientWidth / LAYOUT.width, minimum);
+  state.zoom = 1;
+  setScale(state.baseScale);
+  wrap.scrollLeft = 0;
+  wrap.scrollTop = 0;
+}
+
+// 指（マウス）の位置の下にある庭の点を動かさないように、拡大・縮小する。
+// 2本指のときは、指の動きに合わせて庭も動く。
+function zoomAt(zoom, clientX, clientY) {
+  const rect = wrap.getBoundingClientRect();
+  const oldScale = state.baseScale * state.zoom;
+  const px = clientX - rect.left;
+  const py = clientY - rect.top;
+  const gardenX = (wrap.scrollLeft + px) / oldScale;
+  const gardenY = (wrap.scrollTop + py) / oldScale;
+  state.zoom = Math.min(Math.max(zoom, 0.5), 2);
+  const scale = state.baseScale * state.zoom;
+  setScale(scale);
+  wrap.scrollLeft = gardenX * scale - px;
+  wrap.scrollTop = gardenY * scale - py;
 }
 
 // ---------- 状態の変更 ----------
@@ -409,12 +431,20 @@ function drawTempWire(end, event) {
 function startDrag(event, drag) {
   drag.x0 = event.clientX;
   drag.y0 = event.clientY;
+  drag.downX = event.clientX;
+  drag.downY = event.clientY;
+  drag.pointerId = event.pointerId;
   drag.moved = false;
   drag.scale = garden.getBoundingClientRect().width / LAYOUT.width;
-  const move = (e) => onMove(e, drag);
+  activeDrag = drag;
+  const move = (e) => {
+    if (e.pointerId === drag.pointerId) onMove(e, drag);
+  };
   const up = (e) => {
+    if (e.pointerId !== drag.pointerId) return;
     window.removeEventListener('pointermove', move);
     window.removeEventListener('pointerup', up);
+    activeDrag = null;
     onEnd(e, drag);
   };
   window.addEventListener('pointermove', move);
@@ -422,8 +452,18 @@ function startDrag(event, drag) {
 }
 
 function onMove(event, drag) {
+  if (drag.cancelled) return;
   const dx = event.clientX - drag.x0;
   const dy = event.clientY - drag.y0;
+  if (drag.kind === 'pan') {
+    // 何もないところを1本指で動かすと、庭が動く
+    wrap.scrollLeft -= dx;
+    wrap.scrollTop -= dy;
+    drag.x0 = event.clientX;
+    drag.y0 = event.clientY;
+    if (Math.hypot(event.clientX - drag.downX, event.clientY - drag.downY) >= 8) drag.moved = true;
+    return;
+  }
   if (!drag.moved && Math.hypot(dx, dy) < 8) return; // 8px 以上動いたらドラッグ
   drag.moved = true;
   if (drag.kind === 'wire') drawTempWire(drag.end, event);
@@ -439,6 +479,11 @@ function onMove(event, drag) {
 }
 
 function onEnd(event, drag) {
+  if (drag.cancelled) return;
+  if (drag.kind === 'pan') {
+    if (!drag.moved) tapEmptyGarden(event);
+    return;
+  }
   if (drag.kind === 'wire') {
     $('#temp')?.remove();
     if (!drag.moved) {
@@ -475,7 +520,71 @@ function onEnd(event, drag) {
   }
 }
 
-garden.addEventListener('pointerdown', (event) => {
+// 指の位置。1本指は触った場所で動き方が変わり、2本指は拡大・縮小と庭の移動になる。
+const pointers = new Map();
+let activeDrag = null;
+let pinch = null;
+let lastEmptyTap = null;
+
+function startPinch() {
+  if (activeDrag) {
+    // 1本目の指でのドラッグは取り消す（仕掛けは元の場所へ戻る）
+    activeDrag.cancelled = true;
+    activeDrag = null;
+    $('#temp')?.remove();
+    render();
+  }
+  const [a, b] = [...pointers.values()];
+  pinch = { dist0: Math.hypot(a.x - b.x, a.y - b.y), zoom0: state.zoom };
+}
+
+function applyPinch() {
+  const [a, b] = [...pointers.values()];
+  const dist = Math.hypot(a.x - b.x, a.y - b.y);
+  zoomAt(pinch.zoom0 * (dist / pinch.dist0), (a.x + b.x) / 2, (a.y + b.y) / 2);
+}
+
+// 何もないところを素早く2回タップすると、庭全体に戻す。
+function tapEmptyGarden(event) {
+  const now = performance.now();
+  const near = (other) => Math.hypot(event.clientX - other.x, event.clientY - other.y) < 30;
+  if (lastEmptyTap && now - lastEmptyTap.time < 300 && near(lastEmptyTap)) {
+    lastEmptyTap = null;
+    fitWidth(0);
+  } else {
+    lastEmptyTap = { time: now, x: event.clientX, y: event.clientY };
+  }
+}
+
+window.addEventListener('pointermove', (event) => {
+  if (!pointers.has(event.pointerId)) return;
+  pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  if (pinch && pointers.size === 2) applyPinch();
+});
+for (const type of ['pointerup', 'pointercancel']) {
+  window.addEventListener(type, (event) => {
+    pointers.delete(event.pointerId);
+    if (pointers.size < 2) pinch = null;
+  });
+}
+
+// マウスのホイールでも拡大・縮小する（PC向け）
+wrap.addEventListener(
+  'wheel',
+  (event) => {
+    event.preventDefault();
+    zoomAt(state.zoom * (event.deltaY < 0 ? 1.1 : 1 / 1.1), event.clientX, event.clientY);
+  },
+  { passive: false },
+);
+
+wrap.addEventListener('pointerdown', (event) => {
+  pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  if (pointers.size === 2) {
+    startPinch();
+    return;
+  }
+  if (pointers.size > 2) return;
   if (state.judging) {
     state.skip = true; // 判定中のタップは、結果だけ見せる
     return;
@@ -499,7 +608,7 @@ garden.addEventListener('pointerdown', (event) => {
       state.pending = null;
       render();
     }
-    return;
+    drag = { kind: 'pan' };
   }
   event.preventDefault();
   startDrag(event, drag);

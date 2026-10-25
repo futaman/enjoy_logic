@@ -46,10 +46,12 @@
       position: relative;
       width: 100%;
       overflow: auto;
+      scrollbar-width: none;
       border-radius: 12px;
       background: linear-gradient(#e8f4df, #d4e9c4);
-      touch-action: pan-x pan-y;
+      touch-action: none;
     }
+    #garden-wrap::-webkit-scrollbar { display: none; }
     #garden-box { position: relative; }
     #garden {
       position: absolute;
