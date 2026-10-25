@@ -1,9 +1,14 @@
-import { COMBINATIONAL_STAGES } from './stages.js';
+import { ALL_STAGES } from './stages.js';
 import { TUTORIALS } from './tutorial.js';
-import { faucetIcon, flowerIcon, gateIcon, hostIcon, oyajiIcon, starIcon } from './icons.js';
+import { dogIcon, faucetIcon, flowerIcon, gateIcon, hostIcon, oyajiIcon, shishiodoshiIcon, starIcon } from './icons.js';
 import {
   ALL_ANGERS,
+  ALL_DOG_FORMS,
   angerFor,
+  dogFormFor,
+  dogHostLine,
+  dogReaction,
+  dogShout,
   failureKind,
   gateLine,
   growthFor,
@@ -11,7 +16,7 @@ import {
   wiltFor,
 } from './reactions.js';
 import { CHARACTERS } from './characters.js';
-import { expectedOf } from './logic.js';
+import { expectedAt, expectedOf, faucetsAt } from './logic.js';
 import {
   layoutOf,
   FAUCETS,
@@ -23,6 +28,7 @@ import {
   findPart,
   flowLevels,
   isSource,
+  liveSequence,
   liveState,
   movePart,
   pinPosition,
@@ -41,7 +47,7 @@ const SAVE_KEY = 'enjoy_logic.progress.v2';
 // 時間はすべて「ふつう」の速さのときの長さ。実際には、選んだ速さの倍率をかける（speedMs）。
 const JUDGE_STEP_MS = 300; // 実行のとき、水が1段進む時間
 const FLOW_STEP_MS = 150; // 手で回せる蛇口を回したとき、水が1段進む時間
-const KIND_NAMES = { flower: '花', oyaji: 'おやじ' };
+const KIND_NAMES = { flower: '花', oyaji: 'おやじ', dog: 'パクパク君' };
 const REDUCED_MOTION = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 const OYAJI_SHOW_MS = 2600; // おやじが怒る演出の長さ（タップで飛ばせる）
 // アニメーションの速さ。初めは「ゆっくり」にして、慣れたら上げられる。scale は時間の倍率。
@@ -81,21 +87,24 @@ const state = {
   angerCount: 0, // このステージでおやじに水をかけた回数（怒り方の段階）
   wiltCount: 0, // このステージで花に水が届かなかった回数
   misses: 0, // このステージで水やりに失敗した回数（星の数に使う）
+  beat: 0, // 順序回路編：今見ている拍（0 が1拍目）
+  dogForm: 'puppy', // 順序回路編：パクパク君の今の姿（失敗するたびに変わる）
+  kakon: false, // 順序回路編：拍が進んだ瞬間（ししおどしが傾く）
   marks: null, // 出口ごとの ○×
   cards: [], // これから見せる紹介カード
   progress: loadProgress(),
 };
 
-const currentStage = () => COMBINATIONAL_STAGES[state.stageIndex];
+const currentStage = () => ALL_STAGES[state.stageIndex];
 const layout = () => layoutOf(currentStage()); // 今のステージの庭の大きさ
 
 // 保存できなくても遊べるように、読み書きは try で囲む。
 function loadProgress() {
   try {
     const saved = JSON.parse(localStorage.getItem(SAVE_KEY));
-    return saved?.stages ? { oyaji: [], settings: {}, cardsSeen: [], ...saved } : { stages: {}, oyaji: [], settings: {}, cardsSeen: [] };
+    return saved?.stages ? { oyaji: [], dogs: [], settings: {}, cardsSeen: [], ...saved } : { stages: {}, oyaji: [], dogs: [], settings: {}, cardsSeen: [] };
   } catch {
-    return { stages: {}, oyaji: [], settings: {}, cardsSeen: [] };
+    return { stages: {}, oyaji: [], dogs: [], settings: {}, cardsSeen: [] };
   }
 }
 
@@ -183,7 +192,15 @@ function openStage(index) {
   state.stageIndex = index;
   const stage = currentStage();
   state.board = sanitizeBoard(stageProgress(stage.no).board, stage);
-  state.faucets = { ...stage.faucets }; // 手で回せる蛇口だけ、プレイヤーが変えられる
+  state.beat = 0;
+  // 順序回路編は拍ごとの蛇口。組み合わせ回路編は、手で回せる蛇口だけプレイヤーが変えられる
+  state.faucets = stage.kind === 'seq' ? faucetsAt(stage, 0) : { ...stage.faucets };
+  state.dogForm = 'puppy';
+  // 子犬のパクパク君は、会った時点で図鑑に登録する
+  if (stage.kind === 'seq' && !state.progress.dogs.includes('puppy')) {
+    state.progress.dogs.push('puppy');
+    saveProgress();
+  }
   state.undo = [];
   state.redo = [];
   state.pending = null;
@@ -264,8 +281,10 @@ function tapPin(end) {
 }
 
 function currentLive() {
+  const stage = currentStage();
   try {
-    return liveState(state.board, currentStage(), state.faucets);
+    if (stage.kind === 'seq') return liveSequence(state.board, stage)[state.beat];
+    return liveState(state.board, stage, state.faucets);
   } catch {
     return null; // 水路がぐるぐる回っているときは水が流れない扱い
   }
@@ -347,6 +366,10 @@ async function judge() {
     render();
     return;
   }
+  if (stage.kind === 'seq') {
+    await judgeSequence(stage);
+    return;
+  }
   state.judging = true;
   state.skip = false;
   state.run = { kind: null, host: null, message: '水を流してみるよ…' };
@@ -386,27 +409,104 @@ async function judge() {
   }
 }
 
-// おやじが怒る演出。画面いっぱいに出し、時間がたつかタップで閉じる。
-function showOyaji(anger) {
-  const seen = state.progress.oyaji;
-  const isNew = !seen.includes(anger.id);
-  if (isNew) seen.push(anger.id);
+// 順序回路編の準備完了：1拍目から順に、カコンごとに水を流して、パクパク君が反応する。
+// 失敗した拍で止める。パクパク君は失敗するたびに姿が変わる。
+async function judgeSequence(stage) {
+  let beats;
+  try {
+    beats = liveSequence(state.board, stage);
+  } catch {
+    state.run = { kind: 'loop', host: hostLine('loop', 1), message: '水路がぐるぐる回っていて、水の行き先が決まらないよ。' };
+    render();
+    return;
+  }
+  state.judging = true;
+  state.skip = false;
+  state.run = { kind: null, host: null, message: '1拍目から、順に水を流すよ…', results: [] };
+  let ok = true;
+  for (let beat = 0; beat < stage.beats; beat++) {
+    state.beat = beat;
+    state.faucets = beats[beat].faucets;
+    state.marks = null;
+    state.run.message = `${beat + 1}拍目`;
+    // 2拍目からは、ししおどしがカコンと鳴って、ためていた水を流す
+    state.kakon = beat > 0;
+    state.run.beatDone = false;
+    if (state.kakon) popText('カコン！', 'kakon');
+    await playReveal(JUDGE_STEP_MS);
+    state.kakon = false;
+    state.run.beatDone = true; // 水が届いたあとも、次の拍までパクパク君の反応を見せておく
+    const expected = expectedAt(stage, beat);
+    const actual = beats[beat].outputs;
+    const good = Object.keys(expected).every((name) => expected[name] === actual[name]);
+    state.marks = Object.fromEntries(Object.keys(expected).map((name) => [name, expected[name] === actual[name]]));
+    state.run.results[beat] = good;
+    if (!good) {
+      ok = false;
+      const reaction = dogReaction(expected, actual);
+      state.misses += 1;
+      const form = dogFormFor(state.misses);
+      state.dogForm = form.id;
+      state.run = {
+        ...state.run,
+        kind: 'dog',
+        host: dogHostLine(reaction, beat),
+        message:
+          reaction === 'bite'
+            ? 'この拍、パクパク君は口を閉じていた。水路をたどって、この拍に水が来ないようにしよう。'
+            : 'この拍、パクパク君は口を開けて待っていた。この拍に水が届くようにしよう。',
+      };
+      render();
+      await showDog(form, reaction);
+      break;
+    }
+    render();
+    await pause(state.skip || REDUCED_MOTION ? 0 : speedMs(450));
+  }
+  if (ok) {
+    state.run = {
+      ...state.run,
+      kind: 'ok',
+      host: 'やったね！',
+      message: 'パクパク君は、口を開けた拍に全部水を飲めた！',
+    };
+  }
+  state.judging = false;
+  render();
+  if (ok) {
+    await pause(REDUCED_MOTION ? 0 : speedMs(500));
+    finishStage();
+  }
+}
+
+// パクパク君が反応する演出。かみつく（bite）か、悲しそうに見つめる（sad）。
+function showDog(form, reaction) {
+  const seen = state.progress.dogs;
+  const isNew = !seen.includes(form.id);
+  if (isNew) seen.push(form.id);
   saveProgress();
+  return showOverlay({
+    className: `dog-show ${reaction} ${form.id}`,
+    picture: dogIcon(form.id, reaction),
+    shout: dogShout(form.id, reaction),
+    caption: `${isNew ? '【パクパク君図鑑に登録】' : ''}${form.title}`,
+    shake: reaction === 'bite' && form.id !== 'puppy',
+  });
+}
+
+// 画面いっぱいの演出（おやじ・パクパク君）。時間がたつかタップで閉じる。
+function showOverlay({ className, picture, extra = '', shout, caption, shake }) {
   const show = $('#oyaji-show');
-  const big = anger.id === 'clone'
-    ? Array.from({ length: 5 }, () => `<div class="clone-one">${oyajiIcon(anger.mood)}</div>`).join('')
-    : oyajiIcon(anger.mood);
-  const star = anger.id === 'rocket' ? `<div class="star-after">${starIcon()}</div>` : '';
-  show.className = `${anger.id} ${calm() ? 'calm' : ''}`;
+  show.className = `${className} ${calm() ? 'calm' : ''}`;
   show.innerHTML = `<div class="burst"></div>
-    <div class="big-oyaji">${big}</div>${star}
-    <p class="shout">${anger.shout}</p>
-    <p class="caption">${isNew ? '【おやじ図鑑に登録】' : ''}${anger.title}</p>
+    <div class="big-oyaji">${picture}</div>${extra}
+    <p class="shout">${shout}</p>
+    <p class="caption">${caption}</p>
     <p class="skip">タップで つぎへ</p>`;
   show.hidden = false;
-  // おやじの動き（CSS のアニメーション）も、選んだ速さに合わせる
+  // 動き（CSS のアニメーション）も、選んだ速さに合わせる
   for (const animation of show.getAnimations({ subtree: true })) animation.playbackRate = 1 / currentSpeed().scale;
-  if (!calm() && ['giant', 'rocket', 'daibutsu', 'clone'].includes(anger.id)) {
+  if (!calm() && shake) {
     document.body.classList.remove('shake');
     void document.body.offsetWidth; // 揺れのアニメーションを最初から
     document.body.classList.add('shake');
@@ -421,6 +521,25 @@ function showOyaji(anger) {
     };
     const timer = setTimeout(close, REDUCED_MOTION ? 1500 : speedMs(OYAJI_SHOW_MS));
     show.addEventListener('pointerdown', close);
+  });
+}
+
+// おやじが怒る演出。画面いっぱいに出し、時間がたつかタップで閉じる。
+function showOyaji(anger) {
+  const seen = state.progress.oyaji;
+  const isNew = !seen.includes(anger.id);
+  if (isNew) seen.push(anger.id);
+  saveProgress();
+  const picture = anger.id === 'clone'
+    ? Array.from({ length: 5 }, () => `<div class="clone-one">${oyajiIcon(anger.mood)}</div>`).join('')
+    : oyajiIcon(anger.mood);
+  return showOverlay({
+    className: anger.id,
+    picture,
+    extra: anger.id === 'rocket' ? `<div class="star-after">${starIcon()}</div>` : '',
+    shout: anger.shout,
+    caption: `${isNew ? '【おやじ図鑑に登録】' : ''}${anger.title}`,
+    shake: ['giant', 'rocket', 'daibutsu', 'clone'].includes(anger.id),
   });
 }
 
@@ -447,7 +566,7 @@ function finishStage() {
 }
 
 function showClear(stars) {
-  const hasNext = state.stageIndex < COMBINATIONAL_STAGES.length - 1;
+  const hasNext = state.stageIndex < ALL_STAGES.length - 1;
   $('#clear-stars').textContent = '★'.repeat(stars) + '☆'.repeat(3 - stars);
   $('#clear-cast').innerHTML = `${flowerIcon('bloom')}${flowerIcon('sun')}${oyajiIcon('clap')}${flowerIcon('sun')}${flowerIcon('bloom')}`;
   $('#next-stage').hidden = !hasNext;
@@ -482,6 +601,7 @@ function render() {
   $('#lesson').textContent = stage.lesson;
   $('#mission').textContent = `目標：${stage.mission}`;
   $('#mission').hidden = !stage.mission;
+  renderTimeline(stage);
   renderGarden(stage, live);
   renderTray(stage);
   renderToolbar();
@@ -490,12 +610,60 @@ function render() {
   renderRunStatus();
 }
 
+// 順序回路編のタイムライン。拍ごとの蛇口とパクパク君の口を、全部の拍ぶん並べる。
+// マスをタップすると、その拍の庭（水の様子）が見られる。判定のあとは拍ごとに ○× が付く。
+function renderTimeline(stage) {
+  const box = $('#timeline');
+  box.hidden = stage.kind !== 'seq';
+  if (box.hidden) return;
+  const beats = Array.from({ length: stage.beats }, (_, i) => i);
+  const now = (i) => (i === state.beat ? 'now' : '');
+  const results = state.run?.results ?? [];
+  const head = `<div class="tl-row"><span class="tl-name">拍</span>${beats
+    .map((i) => `<button class="tl-cell beat ${now(i)}" data-beat="${i}">${i + 1}</button>`)
+    .join('')}</div>`;
+  const faucets = stage.inputs
+    .map(
+      (name) => `<div class="tl-row"><span class="tl-name">蛇口${name}</span>${beats
+        .map((i) => {
+          const open = Boolean(stage.faucets[name][i]);
+          return `<button class="tl-cell ${open ? 'w1' : 'w0'} ${now(i)}" data-beat="${i}">${open ? '開' : '閉'}</button>`;
+        })
+        .join('')}</div>`,
+    )
+    .join('');
+  const dogs = Object.keys(stage.outputs)
+    .map(
+      (name) => `<div class="tl-row"><span class="tl-name">${outletLabel(stage, name)}</span>${beats
+        .map((i) => {
+          const open = Boolean(stage.mouth[name][i]);
+          const mark = results[i] === undefined ? '' : results[i] ? 'ok' : 'ng';
+          return `<button class="tl-cell mouth ${open ? 'open' : 'shut'} ${mark} ${now(i)}" data-beat="${i}">${open ? 'あーん' : 'むっ'}</button>`;
+        })
+        .join('')}</div>`,
+    )
+    .join('');
+  box.innerHTML = `${head}${faucets}${dogs}`;
+}
+
+// タイムラインのマスをタップして、その拍の庭を見る。
+function showBeat(beat) {
+  if (state.judging) return;
+  const stage = currentStage();
+  state.beat = beat;
+  state.faucets = faucetsAt(stage, beat);
+  state.run = null;
+  state.marks = null;
+  playReveal(FLOW_STEP_MS);
+}
+
 // チュートリアルの手順。できた手順には印が付く。
 function renderTutorial(stage) {
   const steps = TUTORIALS[stage.no] ?? [];
   $('#tutorial').hidden = !state.tutorialOpen || steps.length === 0;
   if (state.tutorialOpen === false || steps.length === 0) return;
   const snapshot = {
+    beat: state.beat,
     faucets: state.faucets,
     board: state.board,
     cleared: Boolean(stageProgress(stage.no).cleared),
@@ -516,6 +684,20 @@ function pinHtml(stage, end, wet) {
   const key = JSON.stringify(end);
   const pending = state.pending && JSON.stringify(state.pending) === key ? 'pending' : '';
   return `<div class="pin ${wet ? 'wet' : ''} ${pending}" data-end="${encodeURIComponent(key)}" style="left:${p.x}px;top:${p.y}px"></div>`;
+}
+
+// 仕掛けの入口に来ている水（水路がつながっていない入口は水なし）。
+function partInputs(part, live) {
+  return pinsOf(part.type).map((pin) => {
+    const index = state.board.wires.findIndex((wire) => sameEnd(wire.to, { part: part.id, pin }));
+    return index >= 0 && Boolean(live?.wires[index]);
+  });
+}
+
+// 仕掛けの絵。ししおどしは、入口に水が来ている（ためている）と筒が青くなる。
+function partIcon(part, live) {
+  if (part.type === 'DFF') return shishiodoshiIcon(Boolean(live) && partInputs(part, live)[0]);
+  return gateIcon(part.type);
 }
 
 function renderGarden(stage, live) {
@@ -551,7 +733,8 @@ function renderGarden(stage, live) {
     const half = levels ? 2 * levels.outlets[name] : 0;
     const water = reached(half) ? live?.outputs[name] : undefined;
     // 水を流している途中は、水が届いた出口から反応する。結果が出たら全部反応する。
-    const reacting = judged && water !== undefined && (Boolean(levels) || state.run.kind !== null);
+    const reacting =
+      judged && water !== undefined && (Boolean(levels) || state.run.kind !== null || Boolean(state.run.beatDone));
     const run = state.run;
     const growth = kind === 'flower' && water && run?.kind === 'ok' ? growthFor(run.growth) : null;
     const wilt = kind === 'flower' && !water && run?.wilt && !state.judging ? run.wilt : null;
@@ -560,17 +743,28 @@ function renderGarden(stage, live) {
       if (!reacting) mood = 'bud';
       else if (water) mood = growth && growth.level >= 3 ? 'sun' : 'bloom';
       else mood = wilt?.level === 3 ? 'mummy' : 'wilt';
-    } else {
+    } else if (kind === 'oyaji') {
       mood = reacting && water ? 'angry' : 'sleep';
+    } else {
+      // パクパク君：口を開けている拍は水が欲しい。来れば飲み、来なければ悲しむ。閉じている拍に来るとかみつく
+      const open = stage.mouth[name][state.beat];
+      if (!reacting) mood = open ? 'open' : 'wait';
+      else if (open) mood = water ? 'drink' : 'sad';
+      else mood = water ? 'bite' : 'wait';
     }
-    const picture = kind === 'flower' ? flowerIcon(mood) : oyajiIcon(mood);
-    const goal = kind === 'flower' ? '水がほしい' : '水はきらい';
-    const ok = water === (kind === 'flower');
+    const wanted = expectedAt(stage, state.beat)[name];
+    const pictures = { flower: flowerIcon, oyaji: oyajiIcon, dog: (m) => dogIcon(state.dogForm, m) };
+    const picture = pictures[kind](mood);
+    const goals = { flower: '水がほしい', oyaji: '水はきらい', dog: wanted ? '口：あーん' : '口：むっ' };
+    const goal = goals[kind];
+    const ok = water === wanted;
     let say = '';
     if (reacting && arriving(half)) {
       if (kind === 'flower' && water) say = '<span class="say pop">ポン！</span>';
       if (kind === 'oyaji' && water) say = '<span class="say pop mad">こらっ！</span>';
       if (kind === 'oyaji' && !water) say = '<span class="say pop">ぐー…</span>';
+      if (kind === 'dog' && water) say = wanted ? '<span class="say pop">ゴクゴク！</span>' : '<span class="say pop mad">ガブッ！</span>';
+      if (kind === 'dog' && !water && wanted) say = '<span class="say pop sad">くぅん…</span>';
     }
     if (wilt) say = `<span class="say pop sad">${wilt.shout}</span>`;
     const grow = growth ? `--grow:${growth.scale}` : '';
@@ -597,21 +791,25 @@ function renderGarden(stage, live) {
   state.board.parts.forEach((part) => {
     const half = levels ? 2 * levels.parts[part.id] : 0;
     const wet = reached(half) && Boolean(live?.gates[part.id]);
-    const classes = ['box', 'part', wet ? 'on' : '', arriving(half) ? 'working' : '', problemParts.includes(part.id) ? 'problem' : ''];
+    const classes = [
+      'box',
+      'part',
+      wet ? 'on' : '',
+      arriving(half) ? 'working' : '',
+      problemParts.includes(part.id) ? 'problem' : '',
+      part.type === 'DFF' && state.kakon ? 'kakon' : '',
+    ];
     // 水を受けた仕掛けは、ひとこと言う（水をたどって見せている間だけ）
     let say = '';
     if (levels && reached(half) && live) {
-      const inputs = pinsOf(part.type).map((pin) => {
-        const index = state.board.wires.findIndex((wire) => sameEnd(wire.to, { part: part.id, pin }));
-        return index >= 0 && Boolean(live.wires[index]);
-      });
+      const inputs = partInputs(part, live);
       const line = gateLine(part.type, inputs);
       const boom = part.type === 'XOR' && inputs.every(Boolean);
       if (line) say = `<span class="say ${arriving(half) ? 'pop' : ''} ${boom ? 'boom' : ''}">${line}</span>`;
       if (boom && arriving(half)) classes.push('collide');
     }
     boxes.push(
-      `<div class="${classes.join(' ')}" data-part="${part.id}" style="left:${part.x}px;top:${part.y}px">${gateIcon(part.type)}<span class="label"><span class="name">${part.type}</span><span class="sub">${PART_NAMES[part.type]}</span></span>${say}</div>`,
+      `<div class="${classes.join(' ')}" data-part="${part.id}" style="left:${part.x}px;top:${part.y}px">${partIcon(part, live)}<span class="label"><span class="name">${part.type}</span><span class="sub">${PART_NAMES[part.type]}</span></span>${say}</div>`,
     );
     pinsOf(part.type).forEach((pin) => pins.push(pinHtml(stage, { part: part.id, pin }, false)));
     pins.push(pinHtml(stage, { part: part.id, pin: 'out' }, wet));
@@ -705,14 +903,17 @@ function renderHint(stage) {
   hint.textContent = (state.hintLevel === 1 ? [...faucets, ...outlets] : [...faucets, ...outlets, ...gates]).join('\n');
 }
 
+const SECTION_NAMES = { comb: '組み合わせ回路編', seq: '順序回路編（パクパク君）' };
+
 function renderStageList() {
-  $('#stage-list').innerHTML = COMBINATIONAL_STAGES.map((stage, i) => {
+  $('#stage-list').innerHTML = ALL_STAGES.map((stage, i) => {
+    const section = i === 0 || ALL_STAGES[i - 1].kind !== stage.kind ? `<li class="section">${SECTION_NAMES[stage.kind]}</li>` : '';
     const progress = state.progress.stages[stage.no];
-    const locked = !UNLOCK_ALL_STAGES && i > 0 && !state.progress.stages[COMBINATIONAL_STAGES[i - 1].no]?.cleared;
+    const locked = !UNLOCK_ALL_STAGES && i > 0 && !state.progress.stages[ALL_STAGES[i - 1].no]?.cleared;
     const stars = progress?.stars ?? 0;
     const label = `${stage.no}. ${stage.title}`;
     const status = locked ? '（まだ開かない）' : '★'.repeat(stars) + '☆'.repeat(3 - stars);
-    return `<li><button data-stage="${i}" ${locked ? 'disabled' : ''}>${label}　${status}</button></li>`;
+    return `${section}<li><button data-stage="${i}" ${locked ? 'disabled' : ''}>${label}　${status}</button></li>`;
   }).join('');
 }
 
@@ -722,6 +923,7 @@ function characterIcon(key) {
   if (key === 'faucet') return faucetIcon(true);
   if (key === 'switch') return faucetIcon(true, true);
   if (key === 'fog') return hostIcon();
+  if (key === 'dog') return dogIcon('puppy', 'open');
   if (key === 'flower') return flowerIcon('bloom');
   if (key === 'oyaji') return oyajiIcon('sleep');
   return gateIcon(key);
@@ -736,7 +938,7 @@ function showCard(key) {
   const character = CHARACTERS[key];
   if (!character) return;
   const table = character.table
-    ? `<table class="water-table"><thead><tr><th>入口</th><th></th><th>出口</th></tr></thead><tbody>${character.table
+    ? `<table class="water-table"><thead><tr><th>${(character.tableHead ?? ['入口', '出口'])[0]}</th><th></th><th>${(character.tableHead ?? ['入口', '出口'])[1]}</th></tr></thead><tbody>${character.table
         .map(([inputs, output]) => `<tr><td>${inputs.map(waterCell).join(' ')}</td><td>→</td><td>${waterCell(output)}</td></tr>`)
         .join('')}</tbody></table>`
     : '';
@@ -775,6 +977,12 @@ function renderZukan() {
   $('#zukan-list').innerHTML = ALL_ANGERS.map((anger) => {
     const found = seen.includes(anger.id);
     return `<li class="${found ? '' : 'unknown'}">${oyajiIcon(found ? anger.mood : 'sleep')}<span>${found ? anger.title : '？？？'}</span></li>`;
+  }).join('');
+  const dogs = state.progress.dogs;
+  $('#dog-zukan-count').textContent = `${dogs.length} / ${ALL_DOG_FORMS.length}`;
+  $('#dog-zukan-list').innerHTML = ALL_DOG_FORMS.map((form) => {
+    const found = dogs.includes(form.id);
+    return `<li class="${found ? '' : 'unknown'}">${dogIcon(found ? form.id : 'puppy', 'wait')}<span>${found ? form.title : '？？？'}</span></li>`;
   }).join('');
   $('#calm').checked = calm();
   $('#calm').disabled = REDUCED_MOTION;
@@ -1036,6 +1244,10 @@ $('#undo').addEventListener('click', undo);
 $('#redo').addEventListener('click', redo);
 $('#judge').addEventListener('click', judge);
 $('#speed').addEventListener('click', cycleSpeed);
+$('#timeline').addEventListener('click', (event) => {
+  const cell = event.target.closest('[data-beat]');
+  if (cell) showBeat(Number(cell.dataset.beat));
+});
 $('#fit').addEventListener('click', () => {
   fitWidth(0);
   render();

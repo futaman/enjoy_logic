@@ -134,6 +134,7 @@ export function starIcon() {
 const GATE_COLORS = { NOT: '#ffb347', AND: '#7fc8ff', OR: '#8ee08e', XOR: '#ff9aa8' };
 
 export function gateIcon(type) {
+  if (type === 'DFF') return shishiodoshiIcon();
   const fill = GATE_COLORS[type] ?? '#fff';
   const shapes = {
     NOT: `<path d="M6 7 L27 20 L6 33 Z" fill="${fill}" ${LINE}/><circle cx="31" cy="20" r="3.5" fill="${fill}" ${LINE}/>`,
@@ -162,4 +163,114 @@ export function hostIcon() {
     <path d="M16 27 Q19.5 30 23 27" ${LINE} fill="#ff6b81" stroke-width="1.5"/>
     <circle class="drop" cx="38" cy="16" r="1.6" fill="${WATER}"/>
   `, '0 0 40 40', 'host');
+}
+
+// ---------- 順序回路編 ----------
+
+// ししおどし（DFF）。竹の筒に水をため、カコンと傾いて流す。
+// full が true のときは、筒に水がたまっている。
+export function shishiodoshiIcon(full = false) {
+  return svg(`
+    <path d="M6 36 Q20 30 34 36" fill="#b9c2cc" ${LINE}/>
+    <rect x="17" y="18" width="4" height="16" rx="1.5" fill="#c79a5b" ${LINE}/>
+    <g class="tube">
+      <rect x="5" y="11" width="30" height="8" rx="4" transform="rotate(-18 20 15)" fill="#8fd16a" ${LINE}/>
+      ${full ? `<rect x="8" y="13.2" width="24" height="3.6" rx="1.8" transform="rotate(-18 20 15)" fill="${WATER}"/>` : ''}
+      <path d="M14 10.5 L15.5 18 M26 7 L27.5 14.5" stroke="${INK}" stroke-width="1.4" transform="rotate(-2 20 15)"/>
+      <ellipse cx="34.5" cy="9.6" rx="1.8" ry="3.6" transform="rotate(-18 34.5 9.6)" fill="${full ? WATER : '#3d6b2a'}" ${LINE} stroke-width="1.2"/>
+    </g>
+    <circle cx="10.5" cy="16" r="1.2" fill="${INK}"/><circle cx="14.5" cy="14.8" r="1.2" fill="${INK}"/>
+  `, '0 0 40 40', 'gate DFF');
+}
+
+// パクパク君（犬）。form は見た目（失敗するたびに変わる）、mood は様子。
+//   mood: 'wait'（口を閉じて待つ） 'open'（口を開けて待つ） 'drink'（水を飲む）
+//         'sad'（悲しそうにこっちを見る） 'bite'（かみついて吠える）
+const DOG_FUR = {
+  puppy: '#f5c27a', fangs: '#e9a85c', macho: '#c9834a', cerberus: '#6b5876',
+  kaiju: '#6cc46c', dragon: '#e0504a', robot: '#aab4bf',
+};
+
+function dogHead(form, mood) {
+  const fur = DOG_FUR[form] ?? DOG_FUR.puppy;
+  const tough = form !== 'puppy';
+  const ears = {
+    kaiju: `<path d="M11 11 L13 3 L16 10 L19 2 L22 10 L25 3 L28 11" fill="#3f9a4a" ${LINE}/>`,
+    dragon: `<path d="M12 12 Q8 4 13 1 Q12 6 16 10 Z M28 12 Q32 4 27 1 Q28 6 24 10 Z" fill="#ffd23f" ${LINE}/>`,
+    robot: `<path d="M20 9 V3" ${LINE}/><circle cx="20" cy="2.5" r="1.8" fill="#ff5a5f" ${LINE} stroke-width="1"/>
+            <rect x="6" y="14" width="4" height="8" rx="1" fill="#8b96a3" ${LINE}/><rect x="30" y="14" width="4" height="8" rx="1" fill="#8b96a3" ${LINE}/>`,
+  }[form] ?? `<ellipse cx="9.5" cy="17" rx="3.6" ry="7" transform="rotate(18 9.5 17)" fill="#a8693a" ${LINE}/>
+              <ellipse cx="30.5" cy="17" rx="3.6" ry="7" transform="rotate(-18 30.5 17)" fill="#a8693a" ${LINE}/>`;
+  const face = form === 'robot'
+    ? `<rect x="9" y="9" width="22" height="22" rx="6" fill="${fur}" ${LINE}/>`
+    : `<circle cx="20" cy="20" r="11.5" fill="${fur}" ${LINE}/>`;
+  const muzzle = `<ellipse cx="20" cy="25.5" rx="7" ry="5" fill="${form === 'robot' ? '#d8dee5' : '#fff3e0'}" ${LINE} stroke-width="1.6"/>
+                  <ellipse cx="20" cy="22.6" rx="2.3" ry="1.7" fill="${INK}"/>`;
+  let eyes;
+  if (form === 'robot' && mood !== 'sad') {
+    eyes = `<rect x="13" y="15" width="5" height="3" fill="${mood === 'bite' ? '#ff2b2b' : '#3fe0ff'}" ${LINE} stroke-width="1"/>
+            <rect x="22" y="15" width="5" height="3" fill="${mood === 'bite' ? '#ff2b2b' : '#3fe0ff'}" ${LINE} stroke-width="1"/>`;
+  } else if (mood === 'sad') {
+    eyes = `<circle cx="15.5" cy="17" r="3.4" fill="#fff" ${LINE} stroke-width="1.4"/><circle cx="24.5" cy="17" r="3.4" fill="#fff" ${LINE} stroke-width="1.4"/>
+            <circle cx="15.8" cy="17.6" r="2.2" fill="${INK}"/><circle cx="24.8" cy="17.6" r="2.2" fill="${INK}"/>
+            <circle cx="16.6" cy="16.6" r="0.8" fill="#fff"/><circle cx="25.6" cy="16.6" r="0.8" fill="#fff"/>
+            <path d="M12 12.5 L17.5 11 M28 12.5 L22.5 11" ${LINE} stroke-width="1.8"/>
+            <path class="tear" d="M13.5 21 Q12.5 24 13.5 25 Q14.5 24 13.5 21 Z M26.5 21 Q25.5 24 26.5 25 Q27.5 24 26.5 21 Z" fill="${WATER}"/>`;
+  } else if (mood === 'bite') {
+    eyes = `<path d="M11.5 12 L18.5 15.5 M28.5 12 L21.5 15.5" ${LINE} stroke-width="3"/>
+            <circle cx="15.5" cy="17.5" r="1.4" fill="#d61f2c"/><circle cx="24.5" cy="17.5" r="1.4" fill="#d61f2c"/>`;
+  } else if (mood === 'drink') {
+    eyes = `<path d="M13 17.5 Q15.5 15 18 17.5 M22 17.5 Q24.5 15 27 17.5" ${LINE} fill="none"/>`;
+  } else {
+    // 子犬は目を大きく、ほっぺを付けてかわいくする
+    const r = tough ? 1.8 : 2.5;
+    eyes = `<circle cx="15.5" cy="17" r="${r}" fill="${INK}"/><circle cx="24.5" cy="17" r="${r}" fill="${INK}"/>
+            <circle cx="16.3" cy="16.2" r="${r / 3}" fill="#fff"/><circle cx="25.3" cy="16.2" r="${r / 3}" fill="#fff"/>`;
+  }
+  if (!tough && mood !== 'bite') {
+    eyes += `<ellipse cx="11.5" cy="23" rx="2.2" ry="1.4" fill="#ff8fb1" opacity="0.8"/><ellipse cx="28.5" cy="23" rx="2.2" ry="1.4" fill="#ff8fb1" opacity="0.8"/>`;
+  }
+  const brows = tough && mood !== 'sad' && mood !== 'bite' ? `<path d="M12 13 H18 M22 13 H28" ${LINE} stroke-width="2.6"/>` : '';
+  let mouth;
+  if (mood === 'bite') {
+    mouth = `<path d="M12.5 26 Q20 37 27.5 26 Z" fill="#7a1f2b" ${LINE}/>
+             <path d="M13.5 26.5 L15 29 L16.5 26.8 L18 29.5 L19.5 27 L21 29.5 L22.5 27 L24 29 L26 26.5" fill="#fff" stroke="${INK}" stroke-width="0.8"/>`;
+  } else if (mood === 'wait') {
+    mouth = `<path d="M16.5 27.5 Q18.2 29.2 20 27.5 Q21.8 29.2 23.5 27.5" ${LINE} fill="none" stroke-width="1.6"/>`;
+  } else {
+    mouth = `<ellipse cx="20" cy="29" rx="4.2" ry="${mood === 'sad' ? 2.6 : 3.4}" fill="#7a1f2b" ${LINE} stroke-width="1.6"/>
+             <ellipse cx="20" cy="30.6" rx="2.6" ry="1.5" fill="#ff8fa3"/>`;
+  }
+  const fangs = tough && form !== 'robot' && mood !== 'wait'
+    ? `<path d="M16.6 26.6 L17.6 30 L18.6 26.9 Z M23.4 26.6 L22.4 30 L21.4 26.9 Z" fill="#fff" stroke="${INK}" stroke-width="0.9"/>`
+    : '';
+  const drop = mood === 'drink' ? `<path class="gulp" d="M20 33.5 Q18 36.5 20 38 Q22 36.5 20 33.5 Z" fill="${WATER}" ${LINE} stroke-width="1"/>` : '';
+  return `${ears}${face}${brows}${eyes}${muzzle}${mouth}${fangs}${drop}`;
+}
+
+export function dogIcon(form = 'puppy', mood = 'wait') {
+  const fur = DOG_FUR[form] ?? DOG_FUR.puppy;
+  const bark = mood === 'bite'
+    ? `<path class="bark" d="M1 12 L5 14 M0 19 L5 19 M1 26 L5 24 M39 12 L35 14 M40 19 L35 19 M39 26 L35 24" stroke="#d61f2c" stroke-width="2" stroke-linecap="round"/>`
+    : '';
+  let body = `<ellipse cx="20" cy="36" rx="10" ry="5.5" fill="${fur}" ${LINE}/>`;
+  if (form === 'macho') {
+    body = `<path d="M4 40 Q4 30 13 31 L27 31 Q36 30 36 40 Z" fill="${fur}" ${LINE}/>
+            <circle cx="6.5" cy="33" r="4" fill="${fur}" ${LINE}/><circle cx="33.5" cy="33" r="4" fill="${fur}" ${LINE}/>
+            <path d="M15 35 Q20 37 25 35" ${LINE} fill="none" stroke-width="1.2"/>`;
+  }
+  if (form === 'kaiju' || form === 'dragon') {
+    const wing = form === 'dragon'
+      ? `<path d="M8 30 L-2 20 L1 30 L-3 33 Z M32 30 L42 20 L39 30 L43 33 Z" fill="#b8323a" ${LINE}/>`
+      : `<path d="M30 33 L34 28 L35 34 L39 31 L37 38" fill="#3f9a4a" ${LINE}/>`;
+    body = `${wing}<ellipse cx="20" cy="37" rx="11" ry="5" fill="${fur}" ${LINE}/>`;
+  }
+  if (form === 'robot') body = `<rect x="11" y="32" width="18" height="8" rx="2" fill="#8b96a3" ${LINE}/><circle cx="20" cy="36" r="1.6" fill="#ffd23f"/>`;
+  if (form === 'cerberus') {
+    // 頭が3つ。左右の頭は少し小さく、後ろに置く
+    const side = (x) => `<g transform="translate(${x} 7) scale(0.6)">${dogHead(form, mood)}</g>`;
+    return svg(`${bark}<path d="M1 40 Q1 30 11 30 L29 30 Q39 30 39 40 Z" fill="${fur}" ${LINE}/>
+      ${side(-7)}${side(23)}<g transform="translate(6 0) scale(0.7)">${dogHead(form, mood)}</g>`, '0 0 40 40', `dog ${form} ${mood}`);
+  }
+  return svg(`${bark}${body}<g transform="translate(2 2) scale(0.9)">${dogHead(form, mood)}</g>`, '0 0 40 40', `dog ${form} ${mood}`);
 }

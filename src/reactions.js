@@ -60,6 +60,8 @@ export function gateLine(type, inputs) {
     case 'XOR':
       if (count === 1) return 'ちがうっていいね！';
       return count === 2 ? 'おんなじは、つまらん' : null;
+    case 'DFF':
+      return inputs[0] ? 'ためておくね' : null;
     default:
       return null;
   }
@@ -82,4 +84,67 @@ export function hostLine(kind, count) {
     return 'もはや、おやじが楽しみになってない？';
   }
   return count <= 1 ? 'あれれ、花に水が届かなかった！' : '花がかわいそう…もう一回！';
+}
+
+// ---------- パクパク君（順序回路編） ----------
+
+// パクパク君の見た目。同じステージで失敗するたびに激変する。
+// 1回目の失敗でキバが生え、2回目でムキムキ、3回目でケルベロス。4回目からはレアな姿がランダムに出る。
+export const DOG_FORMS = [
+  { id: 'puppy', title: '子犬のパクパク君' },
+  { id: 'fangs', title: 'キバのパクパク君' },
+  { id: 'macho', title: 'ムキムキのパクパク君' },
+  { id: 'cerberus', title: 'ケルベロスのパクパク君' },
+];
+
+export const RARE_DOG_FORMS = [
+  { id: 'kaiju', title: '怪獣パクパク君' },
+  { id: 'dragon', title: 'ドラゴンパクパク君' },
+  { id: 'robot', title: 'メカパクパク君' },
+];
+
+// パクパク君図鑑に並べる順。
+export const ALL_DOG_FORMS = [...DOG_FORMS, ...RARE_DOG_FORMS];
+
+export function dogFormFor(misses, random = Math.random) {
+  if (misses < DOG_FORMS.length) return DOG_FORMS[Math.max(misses, 0)];
+  return RARE_DOG_FORMS[Math.floor(random() * RARE_DOG_FORMS.length) % RARE_DOG_FORMS.length];
+}
+
+// 口を閉じている拍に水が来た（bite）か、口を開けて待っていたのに水が来なかった（sad）ときの一言。
+const DOG_SHOUTS = {
+  bite: {
+    puppy: 'ワン！ワン！',
+    fangs: 'ガルルル…ワンワン！！',
+    macho: 'ガブーーーッ！！',
+    cerberus: 'ワンワンワン！！（3つ分）',
+    kaiju: 'ギャオーーン！！',
+    dragon: 'ゴオォォォ！！（炎）',
+    robot: 'ガブリ・モード、起動。',
+  },
+  sad: {
+    puppy: 'くぅ〜ん…',
+    fangs: '…くぅん（キバもしょんぼり）',
+    macho: '（無言で涙を流す筋肉）',
+    cerberus: 'くぅ〜ん×3…',
+    kaiju: '…ぎゃお…（しょんぼり）',
+    dragon: '（炎も消えそう…）',
+    robot: 'カナシミ、120パーセント。',
+  },
+};
+
+export function dogShout(formId, reaction) {
+  return DOG_SHOUTS[reaction][formId] ?? DOG_SHOUTS[reaction].puppy;
+}
+
+// パクパク君で失敗したとき、どちらの反応か。口を閉じていたのに水が来たら 'bite'、来なかったら 'sad'。
+export function dogReaction(expected, actual) {
+  const wrong = Object.keys(expected).filter((name) => expected[name] !== actual[name]);
+  return wrong.some((name) => actual[name]) ? 'bite' : 'sad';
+}
+
+export function dogHostLine(reaction, beat) {
+  return reaction === 'bite'
+    ? `${beat + 1}拍目：うわっ、口を閉じてるのに水が来ちゃった！`
+    : `${beat + 1}拍目：口を開けて待ってたのに…水が届かなかった`;
 }

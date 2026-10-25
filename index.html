@@ -390,6 +390,10 @@
       animation: pop-text 1.2s cubic-bezier(0.3, 1.6, 0.5, 1) forwards;
     }
     .pop-text.grow { color: #ff8fb1; }
+    .pop-text.kakon { color: #8fd16a; left: 8%; right: auto; top: 6%; font-size: 36px; }
+    /* ししおどし：カコンと傾いて、ためていた水を流す */
+    .part.kakon .tube { animation: kakon 0.45s ease-in-out; transform-origin: 20px 15px; }
+    @keyframes kakon { 0% { transform: rotate(0); } 40% { transform: rotate(-28deg); } 100% { transform: rotate(0); } }
     @keyframes pop-text {
       0% { transform: scale(0.2) rotate(-20deg); opacity: 0; }
       25% { transform: scale(1.2) rotate(-8deg); opacity: 1; }
@@ -517,12 +521,45 @@
     #stage-list { list-style: none; padding: 0; display: grid; gap: 10px; }
     #stage-list button { width: 100%; text-align: left; min-height: 52px; }
     #stage-list button:disabled { color: #9a8c80; }
+    #stage-list li.section { margin-top: 10px; font-size: 18px; font-weight: 900; }
+    #zukan h2 + .zukan-list { margin-bottom: 12px; }
+
+    /* 順序回路編のタイムライン：拍ごとの蛇口とパクパク君の口 */
+    #timeline {
+      padding: 8px;
+      overflow-x: auto;
+      border-radius: 18px;
+      border: 3px solid var(--ink);
+      background: var(--card);
+      display: grid;
+      gap: 4px;
+    }
+    .tl-row { display: flex; align-items: center; gap: 4px; }
+    .tl-name { flex: 0 0 82px; font-size: 13px; font-weight: 900; white-space: nowrap; }
+    .tl-cell {
+      flex: 0 0 44px;
+      min-width: 44px;
+      min-height: 36px;
+      padding: 0;
+      font-size: 12px;
+      border-width: 2px;
+      border-radius: 10px;
+      box-shadow: 0 2px 0 var(--ink);
+    }
+    .tl-cell.beat { background: #f1ebe0; }
+    .tl-cell.w1 { background: var(--water); color: #fff; }
+    .tl-cell.w0 { background: #e9dcc5; color: var(--muted); }
+    .tl-cell.mouth.open { background: #ffe0e8; }
+    .tl-cell.mouth.shut { background: #eee; color: var(--muted); }
+    .tl-cell.mouth.ok { outline: 3px solid var(--ok); }
+    .tl-cell.mouth.ng { outline: 3px solid var(--ng); background: #ffd0d0; }
+    .tl-cell.now { transform: translateY(-3px); box-shadow: 0 5px 0 var(--water); border-color: var(--water); }
     #zukan { margin-top: 20px; padding: 12px 14px; border-radius: 18px; background: var(--card); border: 3px solid var(--ink); }
     #zukan h2 { margin: 0 0 8px; font-size: 18px; }
-    #zukan-list { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
-    #zukan-list li { display: grid; justify-items: center; gap: 2px; padding: 6px; border-radius: 12px; background: #fff; border: 2px solid var(--ink); font-size: 12px; font-weight: 800; text-align: center; }
-    #zukan-list li svg { width: 54px; height: 54px; overflow: visible; }
-    #zukan-list li.unknown svg { filter: brightness(0) opacity(0.25); }
+    #zukan .zukan-list { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+    #zukan .zukan-list li { display: grid; justify-items: center; gap: 2px; padding: 6px; border-radius: 12px; background: #fff; border: 2px solid var(--ink); font-size: 12px; font-weight: 800; text-align: center; }
+    #zukan .zukan-list li svg { width: 54px; height: 54px; overflow: visible; }
+    #zukan .zukan-list li.unknown svg { filter: brightness(0) opacity(0.25); }
     #settings { margin-top: 12px; font-weight: 800; display: flex; gap: 8px; align-items: center; }
     #settings input { width: 22px; height: 22px; }
 
@@ -631,6 +668,26 @@
     @keyframes nod { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(6deg) translateY(6px); } }
     #oyaji-show.calm .big-oyaji, #oyaji-show.calm .clone-one { animation-duration: 0.01s !important; animation-iteration-count: 1 !important; }
 
+    /* パクパク君：かみつく（画面に飛びかかってくる）／悲しそうに見つめる（じわじわ迫る） */
+    #oyaji-show.bite .big-oyaji { animation: lunge 0.9s cubic-bezier(0.2, 1.4, 0.4, 1) forwards; }
+    #oyaji-show.bite .bark { animation: rage 0.1s linear infinite; }
+    @keyframes lunge {
+      0% { transform: scale(0.4) translateY(30%); }
+      45% { transform: scale(1.7) rotate(-4deg); }
+      55% { transform: scale(1.6) rotate(4deg); }
+      65% { transform: scale(1.7) rotate(-3deg); }
+      100% { transform: scale(1.65) rotate(0); }
+    }
+    #oyaji-show.sad .burst { background: repeating-conic-gradient(from 0deg, #bfd8ff 0 7deg, #9fb9e8 7deg 14deg); animation-duration: 20s; }
+    #oyaji-show.sad .big-oyaji { animation: stare 2.4s ease-out forwards; }
+    #oyaji-show.sad .tear { animation: tear 0.8s ease-in infinite; }
+    @keyframes stare { 0% { transform: scale(0.8); } 100% { transform: scale(1.35); } }
+    @keyframes tear { 0% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(6px); opacity: 0; } }
+    #oyaji-show.dog-show.cerberus .burst, #oyaji-show.dog-show.dragon .burst { background: repeating-conic-gradient(from 0deg, #3a2e2a 0 7deg, #a51f2c 7deg 14deg); }
+    #oyaji-show.dog-show.sad.cerberus .burst, #oyaji-show.dog-show.sad.dragon .burst { background: repeating-conic-gradient(from 0deg, #4a5a7a 0 7deg, #2e3a55 7deg 14deg); }
+    .outlet .dog.bite { animation: rage 0.12s linear infinite; }
+    .outlet .dog.sad .tear { animation: tear 0.8s ease-in infinite; }
+
     /* 画面全体の揺れ（設定で弱められる） */
     body.shake { animation: body-shake 0.12s linear 12; }
     @keyframes body-shake {
@@ -724,6 +781,7 @@
 
   <main id="game">
     <section>
+      <div id="timeline" hidden></div>
       <div id="garden-wrap">
         <div id="garden-box">
           <div id="garden"></div>
@@ -770,7 +828,9 @@
     <p><button id="back">もどる</button></p>
     <section id="zukan">
       <h2>おやじ図鑑　<span id="zukan-count"></span></h2>
-      <ul id="zukan-list"></ul>
+      <ul id="zukan-list" class="zukan-list"></ul>
+      <h2>パクパク君図鑑　<span id="dog-zukan-count"></span></h2>
+      <ul id="dog-zukan-list" class="zukan-list"></ul>
       <label id="settings"><input type="checkbox" id="calm"> 画面のゆれと点滅を弱める</label>
     </section>
   </section>

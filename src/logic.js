@@ -1,5 +1,7 @@
 // 回路の評価。仕掛け（ゲート）は入力や他の仕掛けから値を受け取り、1つの値を出す。
 // 1 は「水が流れている」、0 は「水がない」。
+// DFF（ししおどし）だけは記憶を持つ。拍の間はためている水（state）を出し、
+// カコンと鳴って次の拍になるとき、入口に来ている水をためる。だから1拍おくれて水が出る。
 
 export const GATE_ARITY = {
   NOT: 1,
@@ -8,6 +10,7 @@ export const GATE_ARITY = {
   XOR: 2,
   NAND: 2,
   NOR: 2,
+  DFF: 1,
 };
 
 const GATE_FUNCS = {
@@ -45,7 +48,9 @@ export function validateCircuit(circuit) {
 }
 
 // 出口の値と、すべての仕掛けの出力を返す（水路の色づけに使う）。
-export function solve(circuit, values) {
+// dffState は、ししおどしがそれぞれためている水（{ 仕掛けのid: true/false }、ないものは false）。
+// next は、カコンのあと（次の拍）にししおどしがためる水。
+export function solve(circuit, values, dffState = {}) {
   validateCircuit(circuit);
   const gateById = new Map(circuit.gates.map((gate) => [gate.id, gate]));
   const cache = new Map();
@@ -57,9 +62,11 @@ export function solve(circuit, values) {
       return values[ref.input];
     }
     if (cache.has(ref.gate)) return cache.get(ref.gate);
+    const gate = gateById.get(ref.gate);
+    // ししおどしは、ためている水を出すだけ（入口はたどらないので、出口を戻す回路も作れる）
+    if (gate.type === 'DFF') return Boolean(dffState[gate.id]);
     if (visiting.has(ref.gate)) throw new Error(`水路がぐるぐる回っている: ${ref.gate}`);
 
-    const gate = gateById.get(ref.gate);
     visiting.add(ref.gate);
     const result = GATE_FUNCS[gate.type](gate.inputs.map((input) => valueOf(input, visiting)));
     visiting.delete(ref.gate);
@@ -73,7 +80,12 @@ export function solve(circuit, values) {
   const gates = Object.fromEntries(
     circuit.gates.map((gate) => [gate.id, valueOf({ gate: gate.id }, new Set())]),
   );
-  return { gates, outputs };
+  const next = Object.fromEntries(
+    circuit.gates
+      .filter((gate) => gate.type === 'DFF')
+      .map((gate) => [gate.id, valueOf(gate.inputs[0], new Set())]),
+  );
+  return { gates, outputs, next };
 }
 
 export function evaluate(circuit, values) {
@@ -103,4 +115,48 @@ export function checkCircuit(circuit, stage, faucets = stage.faucets) {
   const actual = evaluate(circuit, faucets);
   const same = Object.keys(expected).every((name) => expected[name] === actual[name]);
   return same ? { ok: true } : { ok: false, expected, actual };
+}
+
+// ---------- 順序回路編（拍ごとに進む） ----------
+
+// 拍 beat の蛇口の開け方。順序回路編の蛇口は、拍ごとの開け閉めの並び（1 が開）。
+export function faucetsAt(stage, beat) {
+  return Object.fromEntries(Object.entries(stage.faucets).map(([name, row]) => [name, Boolean(row[beat])]));
+}
+
+// 拍 beat に出口ごとに欲しいもの。パクパク君は口を開けている拍だけ水が欲しい。
+export function expectedAt(stage, beat) {
+  return Object.fromEntries(
+    Object.entries(stage.outputs).map(([name, kind]) => [
+      name,
+      kind === 'dog' ? Boolean(stage.mouth[name][beat]) : kind === 'flower',
+    ]),
+  );
+}
+
+// 1拍目から最後の拍まで回路を動かす。拍ごとの { faucets, gates, outputs, dff } を返す。
+// ししおどしは、初めは水をためていない。
+export function simulate(circuit, stage) {
+  let dff = {};
+  return Array.from({ length: stage.beats }, (_, beat) => {
+    const faucets = faucetsAt(stage, beat);
+    const { gates, outputs, next } = solve(circuit, faucets, dff);
+    const result = { faucets, gates, outputs, dff };
+    dff = next;
+    return result;
+  });
+}
+
+// 拍ごとに、パクパク君の口と水が合っているかを確かめる。
+// 全部合えば { ok: true }、最初に合わなかった拍を { ok: false, beat, expected, actual } で返す。
+export function checkSequence(circuit, stage) {
+  const beats = simulate(circuit, stage);
+  for (let beat = 0; beat < beats.length; beat++) {
+    const expected = expectedAt(stage, beat);
+    const actual = beats[beat].outputs;
+    if (Object.keys(expected).some((name) => expected[name] !== actual[name])) {
+      return { ok: false, beat, expected, actual };
+    }
+  }
+  return { ok: true };
 }
