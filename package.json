@@ -1,0 +1,10 @@
+{
+  "name": "enjoy-logic",
+  "version": "0.1.0",
+  "description": "論理回路まなびゲーム：水やりで1と0、論理ゲート、回路を学ぶ",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}
