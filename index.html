@@ -6,9 +6,10 @@
   <title>論理回路まなびゲーム</title>
   <style>
     :root {
-      --bg: #f6f8f4;
+      --bg: #f4f7f1;
       --ink: #1d2a2a;
-      --line: #556;
+      --muted: #5b6b6b;
+      --line: #6b7785;
       --water: #2a7fd4;
       --dry: #b9bfc4;
       --ok: #1f9d55;
@@ -25,30 +26,49 @@
       background: var(--bg);
     }
     [hidden] { display: none !important; }
-    header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 16px; }
+
+    header { padding: 10px 16px 0; }
+    .top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     h1 { font-size: 20px; margin: 0; }
-    #lesson { color: #556; }
+    #lesson { color: var(--muted); font-size: 14px; }
+    #mission {
+      margin: 10px 0 0;
+      padding: 10px 14px;
+      border-radius: 12px;
+      background: #fff;
+      border-left: 6px solid var(--water);
+      font-size: 18px;
+      font-weight: bold;
+    }
+
     button {
       min-width: 44px;
       min-height: 44px;
       padding: 0 12px;
       font: inherit;
-      border: 1px solid #889;
+      color: var(--ink);
+      border: 1px solid #9aa5b1;
       border-radius: 10px;
       background: #fff;
       cursor: pointer;
     }
     button:disabled { opacity: 0.4; cursor: default; }
-    button.primary { background: #2a7fd4; color: #fff; border-color: #2a7fd4; }
+    button.primary { background: var(--water); color: #fff; border-color: var(--water); font-weight: bold; }
+    button.big { min-height: 52px; font-size: 18px; width: 100%; }
 
-    main { display: flex; flex-direction: column; gap: 12px; padding: 0 16px 16px; }
+    main { display: flex; flex-direction: column; gap: 12px; padding: 12px 16px 16px; }
+
+    /* 庭：ピンチ・1本指で動かす（app.js）。touch-action は使わない */
     #garden-wrap {
       position: relative;
       width: 100%;
       overflow: auto;
       scrollbar-width: none;
-      border-radius: 12px;
-      background: linear-gradient(#e8f4df, #d4e9c4);
+      border-radius: 14px;
+      border: 2px solid #c9d6c2;
+      background:
+        linear-gradient(#e6f3d9 0 35%, #d2e8bd 35%),
+        #d2e8bd;
       touch-action: none;
     }
     #garden-wrap::-webkit-scrollbar { display: none; }
@@ -57,41 +77,100 @@
       position: absolute;
       left: 0;
       top: 0;
-      width: 900px;
-      height: 520px;
+      width: 700px;
+      height: 480px;
       transform-origin: 0 0;
       touch-action: none;
       user-select: none;
     }
     #wires { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
-    #wires .wire { fill: none; stroke: var(--dry); stroke-width: 6; stroke-linejoin: round; }
+    #wires .wire { fill: none; stroke: var(--dry); stroke-width: 7; stroke-linejoin: round; stroke-linecap: round; }
     #wires .wire.on { stroke: var(--water); }
     #wires .wire.selected { stroke: var(--pending); }
-    #wires .hit { fill: none; stroke: transparent; stroke-width: 22; pointer-events: stroke; cursor: pointer; }
+    #wires .hit { fill: none; stroke: transparent; stroke-width: 24; pointer-events: stroke; cursor: pointer; }
     #wires .temp { fill: none; stroke: var(--pending); stroke-width: 4; stroke-dasharray: 6 6; }
-
-    .faucet, .outlet, .part {
-      position: absolute;
-      width: 110px;
-      height: 50px;
-      padding: 4px 8px;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      border: 2px solid var(--line);
-      border-radius: 10px;
-      background: #fff;
-      font-size: 14px;
-      line-height: 1.3;
+    /* まだ水が届いていない水路（実行中） */
+    #wires .wire.waiting { stroke: #dde3e8; stroke-dasharray: 2 12; }
+    /* 水が届いた瞬間：水路の端から端まで水が伸びる */
+    #wires .wire.arrive {
+      stroke-dasharray: 100;
+      stroke-dashoffset: 100;
+      animation: fill-in var(--step, 300ms) linear forwards;
     }
-    .faucet { width: 100px; cursor: pointer; }
-    .faucet.open { background: #cfe8ff; border-color: var(--water); }
-    .outlet { text-align: center; }
+    @keyframes fill-in { to { stroke-dashoffset: 0; } }
+    /* 水が流れている水路の、流れる模様 */
+    #wires .flow {
+      fill: none;
+      stroke: rgba(255, 255, 255, 0.75);
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      stroke-dasharray: 3 15;
+      animation: flow 0.9s linear infinite;
+    }
+    @keyframes flow { to { stroke-dashoffset: -18; } }
+
+    /* 蛇口・出口・仕掛けの箱（絵＋名前） */
+    .box {
+      position: absolute;
+      width: 120px;
+      height: 50px;
+      padding: 4px 6px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      border: 2px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      box-shadow: 0 2px 0 rgba(0, 0, 0, 0.08);
+      line-height: 1.2;
+    }
+    .box svg { width: 34px; height: 34px; flex: 0 0 34px; }
+    .box .label, .chip .label { display: flex; flex-direction: column; min-width: 0; }
+    .box .name { font-size: 14px; font-weight: bold; white-space: nowrap; }
+    .box .sub { display: block; font-size: 12px; color: var(--muted); white-space: nowrap; }
+    .faucet { width: 120px; cursor: pointer; }
+    .faucet.open { background: #d8ecff; border-color: var(--water); }
     .outlet.ok { border-color: var(--ok); }
     .outlet.ng { border-color: var(--ng); }
-    .outlet.wet { background: #cfe8ff; }
+    .outlet.wet { background: #d8ecff; }
     .part { cursor: grab; touch-action: none; }
-    .part span { color: #667; font-size: 12px; }
+    .part.on { border-color: var(--water); }
+    /* 仕掛けに水が届いて、動いた瞬間 */
+    .part.working { animation: work calc(var(--step, 300ms) * 1.4) ease-out; }
+    @keyframes work {
+      0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(42, 127, 212, 0.5); }
+      40% { transform: scale(1.12); box-shadow: 0 0 0 8px rgba(42, 127, 212, 0.25); }
+      100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(42, 127, 212, 0); }
+    }
+    .outlet.waiting { opacity: 0.6; }
+    /* 出口に結果が出た瞬間：花は咲き、おやじは怒って揺れる */
+    .outlet.arrive svg { animation: pop 0.5s ease-out; }
+    .outlet.arrive.ng { animation: shake 0.45s ease-in-out; }
+    @keyframes pop { 0% { transform: scale(0.6); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-5px); }
+      75% { transform: translateX(5px); }
+    }
+    .mark {
+      position: absolute;
+      right: -12px;
+      top: -14px;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-weight: bold;
+      animation: pop 0.35s ease-out;
+    }
+    .mark.ok { background: var(--ok); }
+    .mark.ng { background: var(--ng); }
+    .faucet .drop { animation: drip 1s ease-in infinite; }
+    @keyframes drip { 0% { transform: translateY(-3px); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateY(4px); opacity: 0; } }
+    .part .name { font-size: 14px; }
 
     /* ピンの見た目は 16px、触れる範囲は 44px（画面の拡大率に関係なく） */
     .pin {
@@ -108,46 +187,76 @@
     }
     .pin::after {
       content: "";
-      width: calc(16px / var(--s));
-      height: calc(16px / var(--s));
+      width: calc(18px / var(--s));
+      height: calc(18px / var(--s));
       border-radius: 50%;
-      background: #667;
+      background: #fff;
+      border: calc(3px / var(--s)) solid #5b6b6b;
     }
-    .pin.wet::after { background: var(--water); }
+    .pin.wet::after { border-color: var(--water); background: var(--water); }
     .pin.pending { outline: calc(3px / var(--s)) solid var(--pending); }
 
     .ghost {
       position: fixed;
-      width: 110px;
+      width: 120px;
       height: 50px;
-      padding: 4px 8px;
+      padding: 4px 6px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
       border: 2px dashed #333;
-      border-radius: 10px;
+      border-radius: 12px;
       background: #fff;
       opacity: 0.85;
       pointer-events: none;
       z-index: 10;
-      font-size: 14px;
+      font-size: 13px;
     }
+    .ghost svg { width: 34px; height: 34px; }
 
-    #tray { display: flex; gap: 8px; overflow-x: auto; padding: 4px 0; }
-    #tray p { margin: 0; color: #556; }
+    #tray-title { margin: 0; font-size: 14px; color: var(--muted); }
+    #tray { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 6px; }
+    #tray p { margin: 0; color: var(--muted); }
     .chip {
       flex: 0 0 auto;
-      min-width: 140px;
+      min-width: 132px;
       min-height: 56px;
-      padding: 6px 10px;
+      padding: 6px 10px 6px 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
       border: 2px solid var(--line);
-      border-radius: 10px;
+      border-radius: 12px;
       background: #fff;
       touch-action: none;
       cursor: grab;
-      font-size: 14px;
     }
-    .chip span { display: block; color: #556; }
+    .chip svg { width: 36px; height: 36px; flex: 0 0 36px; }
+    .chip .name { display: block; font-size: 14px; font-weight: bold; }
+    .chip .sub { display: block; font-size: 12px; color: var(--muted); }
     .chip.empty { opacity: 0.4; }
 
     #toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
+    #run-row { display: flex; }
+    #run-status { padding: 10px 12px; border-radius: 12px; background: #fff; border: 2px solid #dde3e8; }
+    #run-status .dots { display: flex; flex-wrap: wrap; gap: 6px; }
+    #run-status .dot {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #eef1f3;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: bold;
+    }
+    #run-status .dot.now { outline: 3px solid var(--water); color: var(--water); }
+    #run-status .dot.ok { background: var(--ok); color: #fff; }
+    #run-status .dot.ng { background: var(--ng); color: #fff; }
+    #run-status p { margin: 8px 0 0; }
+    #run-status p.ng { color: var(--ng); font-weight: bold; }
     #hint-text {
       margin: 0;
       padding: 8px 12px;
@@ -156,15 +265,22 @@
       background: #fff8d6;
     }
 
-    #schedule-wrap h2 { font-size: 18px; margin: 0 0 8px; }
-    #schedule { overflow-x: auto; }
-    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; }
-    th, td { padding: 8px; text-align: center; border-bottom: 1px solid #e3e6e1; }
-    tr[data-row] { cursor: pointer; }
-    tr.current { background: #fff3c4; }
-    td.mark { font-size: 20px; font-weight: bold; }
+    #tutorial {
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: #eef6ff;
+      border: 2px solid #b9d8f7;
+    }
+    #tutorial h2 { font-size: 16px; margin: 0 0 6px; }
+    #tutorial ol { margin: 0 0 8px; padding-left: 0; list-style: none; display: grid; gap: 6px; }
+    #tutorial li { padding: 6px 8px; border-radius: 8px; background: #fff; }
+    #tutorial li.now { outline: 3px solid var(--water); }
+    #tutorial li.done { color: var(--muted); text-decoration: line-through; }
+    #tutorial li::before { content: "□ "; }
+    #tutorial li.done::before { content: "✓ "; color: var(--ok); }
 
     #stage-select { padding: 0 16px 16px; }
+    #stage-select h2 { font-size: 18px; }
     #stage-list { list-style: none; padding: 0; display: grid; gap: 8px; }
     #stage-list button { width: 100%; text-align: left; }
     #stage-list button:disabled { color: #889; }
@@ -185,21 +301,29 @@
       text-align: center;
       display: grid;
       gap: 12px;
+      min-width: 260px;
     }
-    #clear-stars { font-size: 32px; color: #e0a800; }
+    #clear-stars { font-size: 32px; color: #e0a800; margin: 0; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+      #wires .wire.arrive { stroke-dashoffset: 0; }
+    }
 
     @media (min-width: 900px) {
       main { flex-direction: row; align-items: flex-start; }
-      main > section:first-child { flex: 1; min-width: 0; }
-      #schedule-wrap { width: 300px; }
+      main > section { flex: 1; min-width: 0; }
     }
   </style>
 </head>
 <body>
   <header>
-    <button id="menu">ステージ</button>
-    <h1 id="title"></h1>
-    <span id="lesson"></span>
+    <div class="top">
+      <button id="menu">ステージ</button>
+      <h1 id="title"></h1>
+      <span id="lesson"></span>
+    </div>
+    <p id="mission" hidden></p>
   </header>
 
   <main id="game">
@@ -209,21 +333,33 @@
           <div id="garden"></div>
         </div>
       </div>
+
+      <p id="tray-title">仕掛け箱（ドラッグして庭に置く）</p>
+      <div id="tray"></div>
+
       <div id="toolbar">
         <button id="undo" title="元に戻す">↶ 戻す</button>
         <button id="redo" title="やり直す">↷ やり直す</button>
         <button id="delete-wire" hidden>この水路を消す</button>
+        <button id="tutorial-button">チュートリアル</button>
         <button id="hint-button">電球（ヒント）</button>
         <button id="fit">庭全体</button>
         <button id="clear-all">全部消す</button>
-        <button id="judge" class="primary">水やり開始</button>
       </div>
+
+      <div id="run-status" hidden></div>
+
+      <div id="run-row">
+        <button id="judge" class="primary big">準備完了（実行）</button>
+      </div>
+
+      <section id="tutorial" hidden>
+        <h2>チュートリアル</h2>
+        <ol id="tutorial-steps"></ol>
+        <button id="tutorial-close">閉じる</button>
+      </section>
+
       <p id="hint-text" hidden></p>
-      <div id="tray"></div>
-    </section>
-    <section id="schedule-wrap">
-      <h2>今日の予定表</h2>
-      <div id="schedule"></div>
     </section>
   </main>
 

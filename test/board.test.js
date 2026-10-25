@@ -5,6 +5,7 @@ import {
   checkBoard,
   connect,
   createBoard,
+  flowLevels,
   liveState,
   remaining,
   removePart,
@@ -122,4 +123,31 @@ test('水の流れ：蛇口を開けると、つながった水路が1になる'
   assert.deepEqual(closed.wires, [false, true]);
   assert.deepEqual(opened.wires, [true, false]);
   assert.equal(opened.outputs.out, false);
+});
+
+test('水が届く順番：蛇口→仕掛け→出口の順に大きくなる', () => {
+  const s = stage(6);
+  const board = build(
+    [['AND', 300, 100], ['NOT', 300, 300]],
+    [
+      [A, pin('p1', 'in0')],
+      [B, pin('p1', 'in1')],
+      [outPin('p1'), pin('p2', 'in0')],
+      [outPin('p2'), out('out')],
+    ],
+  );
+  assert.deepEqual(flowLevels(board, s), {
+    parts: { p1: 1, p2: 2 },
+    wires: [0, 0, 1, 2],
+    outlets: { out: 3 },
+  });
+});
+
+test('水が届く順番：ぐるぐる回る水路があると null', () => {
+  const s = stage(2);
+  const board = build(
+    [['NOT', 300, 100], ['NOT', 500, 100]],
+    [[outPin('p2'), pin('p1', 'in0')], [outPin('p1'), pin('p2', 'in0')]],
+  );
+  assert.equal(flowLevels(board, s), null);
 });

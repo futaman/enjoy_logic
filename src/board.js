@@ -4,13 +4,13 @@ import { GATE_ARITY, checkCircuit, solve } from './logic.js';
 
 // 庭の大きさと置き場所（画面の単位は px）。
 export const LAYOUT = {
-  width: 900,
-  height: 520,
-  partWidth: 110,
+  width: 700,
+  height: 480,
+  partWidth: 120,
   partHeight: 50,
-  faucetX: 20,
-  faucetWidth: 100,
-  outletX: 760,
+  faucetX: 16,
+  faucetWidth: 120,
+  outletX: 560,
   rowFirst: 40,
   rowGap: 150,
 };
@@ -54,7 +54,7 @@ export function remaining(board, stage, type) {
 }
 
 const snap = (value) => Math.round(value / SNAP) * SNAP;
-const clampX = (x) => Math.min(Math.max(x, 160), LAYOUT.outletX - 30 - LAYOUT.partWidth);
+const clampX = (x) => Math.min(Math.max(x, 150), LAYOUT.outletX - 30 - LAYOUT.partWidth);
 const clampY = (y) => Math.min(Math.max(y, 10), LAYOUT.height - LAYOUT.partHeight - 10);
 
 function nextPartId(board) {
@@ -145,4 +145,45 @@ export function liveState(board, stage, faucets) {
   const { gates, outputs } = solve(toCircuit(board, stage), faucets);
   const valueOfEnd = (end) => ('faucet' in end ? faucets[end.faucet] : gates[end.part]);
   return { gates, outputs, wires: board.wires.map((wire) => valueOfEnd(wire.from)) };
+}
+
+// 水が届く順番。蛇口が0、仕掛けは入口に来る水のうち一番遅いもの＋1、
+// 出口はつながった元＋1、水路は元の順番と同じ。
+// 実行のアニメーションで、水を順番にたどって見せるのに使う。
+// 水路がぐるぐる回っているときは null。
+export function flowLevels(board, stage) {
+  const memo = new Map();
+  const wireInto = (sink) => board.wires.find((wire) => sameEnd(wire.to, sink));
+
+  const levelOf = (end, visiting) => {
+    if ('faucet' in end) return 0;
+    if (memo.has(end.part)) return memo.get(end.part);
+    if (visiting.has(end.part)) throw new Error('loop');
+    visiting.add(end.part);
+    const part = findPart(board, end.part);
+    const sources = pinsOf(part.type)
+      .map((pin) => wireInto({ part: part.id, pin }))
+      .filter(Boolean)
+      .map((wire) => levelOf(wire.from, visiting));
+    visiting.delete(end.part);
+    const level = 1 + Math.max(0, ...sources);
+    memo.set(end.part, level);
+    return level;
+  };
+
+  try {
+    const parts = Object.fromEntries(
+      board.parts.map((part) => [part.id, levelOf({ part: part.id, pin: 'out' }, new Set())]),
+    );
+    const wires = board.wires.map((wire) => levelOf(wire.from, new Set()));
+    const outlets = Object.fromEntries(
+      Object.keys(stage.outputs).map((name) => {
+        const wire = wireInto({ outlet: name });
+        return [name, wire ? levelOf(wire.from, new Set()) + 1 : 1];
+      }),
+    );
+    return { parts, wires, outlets };
+  } catch {
+    return null;
+  }
 }

@@ -1,4 +1,6 @@
 import { COMBINATIONAL_STAGES } from './stages.js';
+import { TUTORIALS } from './tutorial.js';
+import { faucetIcon, flowerIcon, gateIcon, oyajiIcon } from './icons.js';
 import { allRows } from './logic.js';
 import {
   LAYOUT,
@@ -9,6 +11,7 @@ import {
   createBoard,
   disconnect,
   findPart,
+  flowLevels,
   isSource,
   liveState,
   movePart,
@@ -22,13 +25,15 @@ import {
 
 const SAVE_KEY = 'enjoy_logic.progress.v1';
 const OUTLET_NAMES = { out: '出口', sum: '花壇（1の位）', carry: '花壇（2の位）' };
-const MIN_SCALE = 0.6;
+const PLAY_STEP_MS = 150; // 蛇口を触ったとき、水が1段進む時間（仕掛け1つで約0.3秒）
+const JUDGE_STEP_MS = 300; // 実行のとき、水が1段進む時間
+const REDUCED_MOTION = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+const MIN_SCALE = 0.8; // 文字が読める最小の大きさ（小さい画面では横にスクロールして庭を動かす）
 
 const $ = (selector) => document.querySelector(selector);
 const wrap = $('#garden-wrap');
 const garden = $('#garden');
 const tray = $('#tray');
-const schedule = $('#schedule');
 
 const state = {
   stageIndex: 0,
@@ -40,11 +45,14 @@ const state = {
   selectedWire: null,
   hintLevel: 0,
   judging: false,
-  judgeRow: null,
-  judgeFail: null,
   skip: false,
+  reveal: null, // 水をたどって見せている途中の段（null のときは全部見せる）
+  revealToken: 0,
+  run: null, // 実行の進み具合 { rows, index, results, failure }
+  rowMarks: null, // 出口ごとの ○×
   baseScale: 1,
   zoom: 1,
+  tutorialOpen: false,
   progress: loadProgress(),
 };
 
@@ -125,8 +133,12 @@ function openStage(index) {
   state.redo = [];
   state.pending = null;
   state.selectedWire = null;
-  state.judgeFail = null;
+  state.run = null;
+  state.rowMarks = null;
+  stopReveal();
   state.hintLevel = 0;
+  // 初めてのステージは、チュートリアルを開いておく
+  state.tutorialOpen = Boolean(TUTORIALS[stage.no]) && !stageProgress(stage.no).tutorialSeen;
   showScreen('game');
   fitWidth();
   render();
@@ -135,7 +147,9 @@ function openStage(index) {
 function setBoard(board) {
   state.board = board;
   state.selectedWire = null;
-  state.judgeFail = null;
+  state.run = null;
+  state.rowMarks = null;
+  stopReveal();
   stageProgress(currentStage().no).board = board;
   saveProgress();
   render();
@@ -163,8 +177,9 @@ function redo() {
 function toggleFaucet(name) {
   if (state.judging) return;
   state.faucets = { ...state.faucets, [name]: !state.faucets[name] };
-  state.judgeFail = null;
-  render();
+  state.run = null;
+  state.rowMarks = null;
+  playReveal(PLAY_STEP_MS); // 水が仕掛けを1つずつ通る様子を見せる
 }
 
 // 2つの端をつなぐ。向きは出口→入口に自動で揃える。
@@ -195,40 +210,82 @@ function currentLive() {
 
 // ---------- 判定 ----------
 
-function rowMatches(stage, board, row) {
+// 1つの開け方について、出口ごとに目標どおりかを返す（水路がぐるぐる回っていると null）。
+function rowMarks(stage, board, row) {
   try {
     const { outputs } = liveState(board, stage, row);
-    return Object.keys(stage.outputs).every((name) => outputs[name] === stage.outputs[name](row));
+    return Object.fromEntries(
+      Object.keys(stage.outputs).map((name) => [name, outputs[name] === stage.outputs[name](row)]),
+    );
   } catch {
-    return false;
+    return null;
   }
+}
+
+function failureMessage(stage, row, marks) {
+  if (!marks) return '水路がぐるぐる回っていて、水の行き先が決まらないよ。';
+  const faucets = stage.inputs.map((name) => `蛇口${name}が${row[name] ? '開' : '閉'}`).join('、');
+  const wrong = Object.keys(marks)
+    .filter((name) => !marks[name])
+    .map((name) => `${OUTLET_NAMES[name]}${stage.outputs[name](row) ? 'に水が届かなかった' : 'に水がかかってしまった'}`);
+  return `${faucets}のとき、${wrong.join('。')}。`;
 }
 
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function stopReveal() {
+  state.revealToken += 1;
+  state.reveal = null;
+}
+
+// 水を蛇口から順番にたどって見せる。水路を流れる段と、仕掛けが動く段を交互に進める。
+// 途中で盤面が変わったら（stopReveal）、そこでやめる。
+async function playReveal(stepMs) {
+  const token = ++state.revealToken;
+  const levels = flowLevels(state.board, currentStage());
+  const ms = REDUCED_MOTION ? 0 : stepMs;
+  garden.style.setProperty('--step', `${ms}ms`);
+  if (levels && ms > 0) {
+    const last = 2 * Math.max(1, ...Object.values(levels.parts), ...Object.values(levels.outlets));
+    for (let half = 0; half <= last; half++) {
+      if (token !== state.revealToken) return;
+      state.reveal = half;
+      render();
+      await pause(state.skip ? 0 : ms);
+    }
+  }
+  if (token !== state.revealToken) return;
+  state.reveal = null;
+  render();
+}
+
+// 準備完了（実行）：蛇口の開け方を1つずつ試し、水の流れをたどって出口に ○× を付ける。
 async function judge() {
   if (state.judging) return;
   const stage = currentStage();
   const rows = allRows(stage.inputs);
   state.judging = true;
   state.skip = false;
-  state.judgeFail = null;
-  let failedAt = null;
+  state.pending = null;
+  state.selectedWire = null;
+  state.run = { rows, index: 0, results: [], failure: null };
   for (let i = 0; i < rows.length; i++) {
+    state.run.index = i;
     state.faucets = rows[i];
-    state.judgeRow = i;
+    state.rowMarks = null;
+    await playReveal(JUDGE_STEP_MS);
+    const marks = rowMarks(stage, state.board, rows[i]);
+    const ok = Boolean(marks) && Object.values(marks).every(Boolean);
+    state.rowMarks = marks;
+    state.run.results.push(ok);
+    if (!ok) state.run.failure = failureMessage(stage, rows[i], marks);
     render();
-    await pause(state.skip ? 0 : 350);
-    if (!rowMatches(stage, state.board, rows[i])) {
-      failedAt = i;
-      break;
-    }
+    await pause(state.skip || REDUCED_MOTION ? 0 : 700);
+    if (!ok) break;
   }
   state.judging = false;
-  state.judgeRow = null;
-  state.judgeFail = failedAt;
-  if (failedAt === null) finishStage();
   render();
+  if (!state.run.failure) finishStage();
 }
 
 function finishStage() {
@@ -257,11 +314,34 @@ function render() {
   const live = currentLive();
   $('#title').textContent = `${stage.no}. ${stage.title}`;
   $('#lesson').textContent = stage.lesson;
+  $('#mission').textContent = `目標：${stage.mission}`;
+  $('#mission').hidden = !stage.mission;
   renderGarden(stage, live);
-  renderSchedule(stage);
   renderTray(stage);
   renderToolbar();
   renderHint(stage);
+  renderTutorial(stage);
+  renderRunStatus(stage);
+}
+
+// チュートリアルの手順。できた手順には印が付く。
+function renderTutorial(stage) {
+  const steps = TUTORIALS[stage.no] ?? [];
+  $('#tutorial').hidden = !state.tutorialOpen || steps.length === 0;
+  if (state.tutorialOpen === false || steps.length === 0) return;
+  const snapshot = {
+    faucets: state.faucets,
+    board: state.board,
+    cleared: Boolean(stageProgress(stage.no).cleared),
+  };
+  const doneFlags = steps.map((step) => Boolean(step.done(snapshot)));
+  const current = doneFlags.indexOf(false);
+  $('#tutorial-steps').innerHTML = steps
+    .map((step, i) => {
+      const cls = doneFlags[i] ? 'done' : i === current ? 'now' : '';
+      return `<li class="${cls}">${step.text}</li>`;
+    })
+    .join('');
 }
 
 // 端のピン。タップ・ドラッグで水路を引く場所。
@@ -275,32 +355,47 @@ function pinHtml(stage, end, wet) {
 function renderGarden(stage, live) {
   const boxes = [];
   const pins = [];
+  // 水をたどって見せている途中なら、段（half）が今の段までのものだけに水を見せる。
+  const levels = state.reveal === null ? null : flowLevels(state.board, stage);
+  const reached = (half) => !levels || half <= state.reveal;
+  const arriving = (half) => Boolean(levels) && half === state.reveal;
 
   stage.inputs.forEach((name) => {
     const open = Boolean(state.faucets[name]);
     const top = rowTop(FAUCETS.indexOf(name));
     boxes.push(
-      `<div class="faucet ${open ? 'open' : ''}" data-faucet="${name}" style="left:${LAYOUT.faucetX}px;top:${top}px"><b>蛇口${name}</b><span>${open ? '開いている' : '閉じている'}</span></div>`,
+      `<div class="box faucet ${open ? 'open' : ''}" data-faucet="${name}" style="left:${LAYOUT.faucetX}px;top:${top}px">${faucetIcon(open)}<span class="label"><span class="name">蛇口${name}</span><span class="sub">${open ? '開いている' : '閉じている'}</span></span></div>`,
     );
     pins.push(pinHtml(stage, { faucet: name }, open));
   });
 
   Object.keys(stage.outputs).forEach((name, index) => {
+    const half = levels ? 2 * levels.outlets[name] : 0;
     const expected = stage.outputs[name](state.faucets);
-    const actual = live?.outputs[name];
-    const status = actual === undefined ? '' : actual === expected ? 'ok' : 'ng';
+    const actual = reached(half) ? live?.outputs[name] : undefined;
+    const status = actual === undefined ? 'waiting' : actual === expected ? 'ok' : 'ng';
+    // 絵は水が届いた結果（花は咲く、おやじは怒る）。下の文は、本当の目標。
+    const picture = expected ? flowerIcon(Boolean(actual)) : oyajiIcon(Boolean(actual));
+    const goal = expected ? '水をもらう' : '水をかけない';
+    const mark = state.rowMarks
+      ? `<span class="mark ${state.rowMarks[name] ? 'ok' : 'ng'}">${state.rowMarks[name] ? '○' : '×'}</span>`
+      : '';
+    const classes = ['box', 'outlet', status, actual ? 'wet' : '', arriving(half) ? 'arrive' : ''];
     boxes.push(
-      `<div class="outlet ${status} ${actual ? 'wet' : ''}" data-outlet="${name}" style="left:${LAYOUT.outletX}px;top:${rowTop(index)}px"><b>${OUTLET_NAMES[name]}</b><span>${expected ? '花' : '頑固おやじ'}</span></div>`,
+      `<div class="${classes.join(' ')}" data-outlet="${name}" style="left:${LAYOUT.outletX}px;top:${rowTop(index)}px">${picture}<span class="label"><span class="name">${OUTLET_NAMES[name]}</span><span class="sub">${goal}</span></span>${mark}</div>`,
     );
     pins.push(pinHtml(stage, { outlet: name }, false));
   });
 
   state.board.parts.forEach((part) => {
+    const half = levels ? 2 * levels.parts[part.id] : 0;
+    const wet = reached(half) && Boolean(live?.gates[part.id]);
+    const classes = ['box', 'part', wet ? 'on' : '', arriving(half) ? 'working' : ''];
     boxes.push(
-      `<div class="part" data-part="${part.id}" style="left:${part.x}px;top:${part.y}px"><b>${PART_NAMES[part.type]}</b><span>${part.type}</span></div>`,
+      `<div class="${classes.join(' ')}" data-part="${part.id}" style="left:${part.x}px;top:${part.y}px">${gateIcon(part.type)}<span class="label"><span class="name">${part.type}</span><span class="sub">${PART_NAMES[part.type]}</span></span></div>`,
     );
     pinsOf(part.type).forEach((pin) => pins.push(pinHtml(stage, { part: part.id, pin }, false)));
-    pins.push(pinHtml(stage, { part: part.id, pin: 'out' }, Boolean(live?.gates[part.id])));
+    pins.push(pinHtml(stage, { part: part.id, pin: 'out' }, wet));
   });
 
   const wires = state.board.wires
@@ -309,36 +404,46 @@ function renderGarden(stage, live) {
       const b = pinPosition(stage, state.board, wire.to);
       const middle = (a.x + b.x) / 2;
       const d = `M${a.x} ${a.y} H${middle} V${b.y} H${b.x}`;
-      const classes = [live?.wires[i] ? 'on' : '', state.selectedWire === i ? 'selected' : ''];
-      return `<path class="wire ${classes.join(' ')}" d="${d}"/><path class="hit" data-wire="${i}" d="${d}"/>`;
+      const half = levels ? 2 * levels.wires[i] + 1 : 0;
+      const on = reached(half) && Boolean(live?.wires[i]);
+      const classes = [
+        'wire',
+        reached(half) ? '' : 'waiting',
+        on ? 'on' : '',
+        on && arriving(half) ? 'arrive' : '',
+        state.selectedWire === i ? 'selected' : '',
+      ];
+      // 水が流れている水路には、流れる模様を重ねる
+      const flow = on && !arriving(half) ? `<path class="flow" d="${d}"/>` : '';
+      return `<path class="${classes.join(' ')}" d="${d}" pathLength="100"/>${flow}<path class="hit" data-wire="${i}" d="${d}"/>`;
     })
     .join('');
 
   garden.innerHTML = `<svg id="wires" width="${LAYOUT.width}" height="${LAYOUT.height}" viewBox="0 0 ${LAYOUT.width} ${LAYOUT.height}">${wires}</svg>${boxes.join('')}${pins.join('')}`;
 }
 
-function renderSchedule(stage) {
-  const names = Object.keys(stage.outputs);
-  const head = [
-    ...stage.inputs.map((name) => `<th>${name}</th>`),
-    ...names.map((name) => `<th>${OUTLET_NAMES[name]}</th>`),
-    '<th></th>',
-  ].join('');
-  const body = allRows(stage.inputs)
-    .map((row, i) => {
-      const current = stage.inputs.every((name) => state.faucets[name] === row[name]);
-      const cells = [
-        ...stage.inputs.map((name) => `<td>${row[name] ? '開' : '閉'}</td>`),
-        ...names.map((name) => `<td>${stage.outputs[name](row) ? '花' : '頑固おやじ'}</td>`),
-      ].join('');
-      let mark = '';
-      if (state.judgeFail === i) mark = '×';
-      else if (state.judging && i < state.judgeRow) mark = '○';
-      else if (state.judging && i === state.judgeRow) mark = '…';
-      return `<tr data-row="${i}" class="${current ? 'current' : ''}">${cells}<td class="mark">${mark}</td></tr>`;
+// 実行中の進み具合（試した開け方ごとの ○×）と、うまくいかなかった理由。
+function renderRunStatus(stage) {
+  const box = $('#run-status');
+  const run = state.run;
+  box.hidden = !run;
+  if (!run) return;
+  const dots = run.rows
+    .map((_, i) => {
+      const result = run.results[i];
+      if (result === undefined) {
+        const now = state.judging && i === run.index ? 'now' : '';
+        return `<span class="dot ${now}">${i + 1}</span>`;
+      }
+      return `<span class="dot ${result ? 'ok' : 'ng'}">${result ? '○' : '×'}</span>`;
     })
     .join('');
-  schedule.innerHTML = `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+  const row = run.rows[run.index];
+  const faucets = stage.inputs.map((name) => `蛇口${name}：${row[name] ? '開' : '閉'}`).join('　');
+  let message = 'すべての開け方で成功！';
+  if (run.failure) message = run.failure;
+  else if (state.judging) message = `ためしている開け方　${faucets}`;
+  box.innerHTML = `<div class="dots">${dots}</div><p class="${run.failure ? 'ng' : ''}">${message}</p>`;
 }
 
 function renderTray(stage) {
@@ -347,7 +452,7 @@ function renderTray(stage) {
     ? types
         .map((type) => {
           const left = remaining(state.board, stage, type);
-          return `<div class="chip ${left > 0 ? '' : 'empty'}" data-type="${type}"><b>${type}　${PART_NAMES[type]}</b><span>のこり ${left}</span></div>`;
+          return `<div class="chip ${left > 0 ? '' : 'empty'}" data-type="${type}">${gateIcon(type)}<span class="label"><span class="name">${type}　${PART_NAMES[type]}</span><span class="sub">のこり ${left}</span></span></div>`;
         })
         .join('')
     : '<p>このステージは、水路だけでつなぎます。</p>';
@@ -437,6 +542,7 @@ function startDrag(event, drag) {
   drag.moved = false;
   drag.scale = garden.getBoundingClientRect().width / LAYOUT.width;
   activeDrag = drag;
+  if (!state.judging) stopReveal(); // 触り始めたら、水をたどる演出はやめて全部見せる
   const move = (e) => {
     if (e.pointerId === drag.pointerId) onMove(e, drag);
   };
@@ -473,7 +579,7 @@ function onMove(event, drag) {
     drag.el.style.top = `${drag.pos.y}px`;
   }
   if (drag.kind === 'new') {
-    drag.ghost.style.left = `${event.clientX - 55}px`;
+    drag.ghost.style.left = `${event.clientX - 60}px`;
     drag.ghost.style.top = `${event.clientY - 25}px`;
   }
 }
@@ -621,20 +727,12 @@ tray.addEventListener('pointerdown', (event) => {
   if (remaining(state.board, currentStage(), type) <= 0) return;
   const ghost = document.createElement('div');
   ghost.className = 'ghost';
-  ghost.innerHTML = `<b>${type}　${PART_NAMES[type]}</b>`;
-  ghost.style.left = `${event.clientX - 55}px`;
+  ghost.innerHTML = `${gateIcon(type)}<span class="name">${type}</span>`;
+  ghost.style.left = `${event.clientX - 60}px`;
   ghost.style.top = `${event.clientY - 25}px`;
   document.body.append(ghost);
   event.preventDefault();
   startDrag(event, { kind: 'new', type, ghost });
-});
-
-schedule.addEventListener('click', (event) => {
-  const row = event.target.closest('tr[data-row]');
-  if (!row || state.judging) return;
-  state.faucets = allRows(currentStage().inputs)[Number(row.dataset.row)];
-  state.judgeFail = null;
-  render();
 });
 
 // ---------- ボタン ----------
@@ -657,6 +755,16 @@ $('#clear-all').addEventListener('click', () => {
 $('#hint-button').addEventListener('click', () => {
   state.hintLevel = Math.min(state.hintLevel + 1, 2);
   stageProgress(currentStage().no).hintUsed = true;
+  saveProgress();
+  render();
+});
+$('#tutorial-button').addEventListener('click', () => {
+  state.tutorialOpen = !state.tutorialOpen;
+  render();
+});
+$('#tutorial-close').addEventListener('click', () => {
+  state.tutorialOpen = false;
+  stageProgress(currentStage().no).tutorialSeen = true;
   saveProgress();
   render();
 });

@@ -1,11 +1,14 @@
 // 組み合わせ回路編の8ステージ（仕様書「論理回路まなびゲーム 仕様書（初版）」より）。
+// mission は画面に出す目標の文、lesson は学ぶこと。
 // inputs は蛇口の名前、outputs は出口ごとの「正しい答え」。
+// tray は仕掛け箱に入っている数（ここにない仕掛けは使えない）。
 // solution は参考解（テストで正解になることを確かめる）。
 
 export const COMBINATIONAL_STAGES = [
   {
     no: 1,
     title: 'はじめての水やり',
+    mission: '蛇口を開けたら、花に水が届くようにつなごう',
     lesson: '1と0、配線',
     tray: {},
     inputs: ['A'],
@@ -20,6 +23,7 @@ export const COMBINATIONAL_STAGES = [
   {
     no: 2,
     title: 'おやじの昼寝',
+    mission: '蛇口を開けるとおやじが昼寝、閉めると花に水',
     lesson: 'NOT',
     tray: { NOT: 2 },
     inputs: ['A'],
@@ -34,6 +38,7 @@ export const COMBINATIONAL_STAGES = [
   {
     no: 3,
     title: '二人の庭師',
+    mission: '蛇口AとBが両方開いたときだけ花に水',
     lesson: 'AND',
     tray: { AND: 2 },
     inputs: ['A', 'B'],
@@ -48,6 +53,7 @@ export const COMBINATIONAL_STAGES = [
   {
     no: 4,
     title: 'どっちでも',
+    mission: 'AかBのどちらかが開いたら花に水',
     lesson: 'OR',
     tray: { OR: 2 },
     inputs: ['A', 'B'],
@@ -62,6 +68,7 @@ export const COMBINATIONAL_STAGES = [
   {
     no: 5,
     title: 'けんかする庭師',
+    mission: '片方だけ開いたら花。両方開いたらおやじ',
     lesson: 'XOR',
     tray: { XOR: 2 },
     inputs: ['A', 'B'],
@@ -76,7 +83,8 @@ export const COMBINATIONAL_STAGES = [
   {
     no: 6,
     title: '新しい仕掛け',
-    lesson: 'NAND・NOR、組み合わせて新しい仕掛けを作れる',
+    mission: '両方開いたときだけおやじ。それ以外は花',
+    lesson: 'NAND（NORも同じように作れる）',
     tray: { AND: 2, OR: 1, NOT: 2 },
     inputs: ['A', 'B'],
     outputs: {
@@ -93,7 +101,8 @@ export const COMBINATIONAL_STAGES = [
   {
     no: 7,
     title: '多数決',
-    lesson: '3入力、予定表から回路を考える',
+    mission: '蛇口3つのうち2つ以上開いたら花に水',
+    lesson: '3つの蛇口の組み合わせを考える',
     tray: { AND: 4, OR: 3 },
     inputs: ['A', 'B', 'C'],
     outputs: {
@@ -113,7 +122,8 @@ export const COMBINATIONAL_STAGES = [
   {
     no: 8,
     title: '花が2つ',
-    lesson: '開いた蛇口の数を、2つの花壇で示す（半加算器）',
+    mission: '開いた蛇口の数を、2つの花壇で示そう（上が1の位、下が2の位）',
+    lesson: '開いた蛇口の数を2進数で表す（半加算器）',
     tray: { AND: 2, XOR: 2 },
     inputs: ['A', 'B'],
     outputs: {
