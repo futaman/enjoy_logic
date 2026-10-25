@@ -80,7 +80,7 @@ export function evaluate(circuit, values) {
   return solve(circuit, values).outputs;
 }
 
-// 蛇口の開け方を全部並べる。['A', 'B'] なら 00, 01, 10, 11 の4通り。
+// 蛇口の開け方を全部並べる（仕掛けの紹介カードの表に使う）。['A', 'B'] なら 00, 01, 10, 11 の4通り。
 export function allRows(inputNames) {
   const count = 2 ** inputNames.length;
   return Array.from({ length: count }, (_, n) =>
@@ -90,16 +90,16 @@ export function allRows(inputNames) {
   );
 }
 
-// 予定表（すべての蛇口の開け方）と回路を比べる。
-// 全部合えば { ok: true }、違う行があればその行を返す。
+// 出口ごとの「正しい答え」。花は水が欲しい（1）、おやじは水をかけない（0）。
+export function expectedOf(stage) {
+  return Object.fromEntries(Object.entries(stage.outputs).map(([name, kind]) => [name, kind === 'flower']));
+}
+
+// ステージの蛇口の開け方（画面に見えている1つだけ）で回路を動かし、出口ごとの答えと比べる。
+// 全部合えば { ok: true }、違えば出口ごとの値を返す。
 export function checkCircuit(circuit, stage) {
-  for (const row of allRows(stage.inputs)) {
-    const expected = Object.fromEntries(
-      Object.entries(stage.outputs).map(([name, expect]) => [name, expect(row)]),
-    );
-    const actual = evaluate(circuit, row);
-    const same = Object.keys(expected).every((name) => expected[name] === actual[name]);
-    if (!same) return { ok: false, row, expected, actual };
-  }
-  return { ok: true };
+  const expected = expectedOf(stage);
+  const actual = evaluate(circuit, stage.faucets);
+  const same = Object.keys(expected).every((name) => expected[name] === actual[name]);
+  return same ? { ok: true } : { ok: false, expected, actual };
 }

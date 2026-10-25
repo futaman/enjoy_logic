@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { allRows, checkCircuit, evaluate } from '../src/logic.js';
+import { allRows, checkCircuit, expectedOf, evaluate } from '../src/logic.js';
 import { COMBINATIONAL_STAGES } from '../src/stages.js';
 
 test('基本の仕掛けは真理値表どおりに動く', () => {
@@ -21,7 +21,7 @@ test('基本の仕掛けは真理値表どおりに動く', () => {
   }
 });
 
-test('予定表の行は蛇口の開け方を全部並べる', () => {
+test('蛇口の開け方を全部並べる', () => {
   assert.deepEqual(allRows(['A', 'B']), [
     { A: false, B: false },
     { A: false, B: true },
@@ -66,24 +66,18 @@ for (const stage of COMBINATIONAL_STAGES) {
   });
 }
 
-test('違う回路は、どの行で違ったかを返す', () => {
-  const stage = COMBINATIONAL_STAGES[2]; // 二人の庭師（AND）
+test('違う回路は、出口ごとの値を返す', () => {
+  const stage = COMBINATIONAL_STAGES[5]; // カタブツは動かない（A 開、B 閉）
   const wrong = {
     gates: [{ id: 'g1', type: 'OR', inputs: [{ input: 'A' }, { input: 'B' }] }],
-    outputs: { out: { gate: 'g1' } },
+    outputs: { f1: { input: 'A' }, o1: { gate: 'g1' } },
   };
   const result = checkCircuit(wrong, stage);
   assert.equal(result.ok, false);
-  assert.deepEqual(result.row, { A: false, B: true });
-  assert.equal(result.expected.out, false);
-  assert.equal(result.actual.out, true);
+  assert.deepEqual(result.expected, { f1: true, o1: false });
+  assert.deepEqual(result.actual, { f1: true, o1: true });
 });
 
-test('6番目のステージはANDだけでは正解にならない（NANDを作る必要がある）', () => {
-  const stage = COMBINATIONAL_STAGES[5];
-  const andOnly = {
-    gates: [{ id: 'g1', type: 'AND', inputs: [{ input: 'A' }, { input: 'B' }] }],
-    outputs: { out: { gate: 'g1' } },
-  };
-  assert.equal(checkCircuit(andOnly, stage).ok, false);
+test('出口のキャラが仕様：花は1、おやじは0', () => {
+  assert.deepEqual(expectedOf({ outputs: { f1: 'flower', o1: 'oyaji' } }), { f1: true, o1: false });
 });

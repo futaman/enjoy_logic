@@ -9,6 +9,7 @@ import {
   liveState,
   remaining,
   removePart,
+  ruleProblems,
 } from '../src/board.js';
 import { COMBINATIONAL_STAGES } from '../src/stages.js';
 
@@ -64,87 +65,109 @@ test('仕掛けを消すと、つながっていた水路も消える', () => {
 });
 
 test('仕掛け箱の残りの数は、置いた数を引いて出す', () => {
-  const s = stage(9);
-  const board = build([['AND', 300, 100]], []);
-  assert.equal(remaining(createBoard(), s, 'AND'), 2);
-  assert.equal(remaining(board, s, 'AND'), 1);
+  const s = stage(12);
+  const board = build([['NOT', 300, 100]], []);
+  assert.equal(remaining(createBoard(), s, 'NOT'), 2);
+  assert.equal(remaining(board, s, 'NOT'), 1);
 });
 
-test('参考解を盤面で組んだものは正解になる（ステージ3）', () => {
-  const s = stage(3);
+test('参考解を盤面で組んだものは正解になる（ステージ5）', () => {
+  const s = stage(5);
   const board = build(
     [['AND', 300, 100]],
-    [[A, pin('p1', 'in0')], [B, pin('p1', 'in1')], [outPin('p1'), out('out')]],
+    [[A, pin('p1', 'in0')], [B, pin('p1', 'in1')], [outPin('p1'), out('f1')]],
   );
   assert.deepEqual(checkBoard(board, s), { ok: true });
 });
 
-test('つながっていない入口は水がないものとして扱う', () => {
-  const s = stage(3);
-  const board = build([['AND', 300, 100]], [[A, pin('p1', 'in0')], [outPin('p1'), out('out')]]);
-  const result = checkBoard(board, s);
+test('判定は、画面に見えている蛇口の開け方だけで行う', () => {
+  // ステージ6は A が開、B が閉。カタブツの出口は水なしなので、おやじは寝たまま。
+  const s = stage(6);
+  const board = build(
+    [['AND', 300, 100]],
+    [[A, pin('p1', 'in0')], [B, pin('p1', 'in1')], [outPin('p1'), out('o1')], [A, out('f1')]],
+  );
+  assert.deepEqual(checkBoard(board, s), { ok: true });
+  // 花とおやじをつなぎ替えると、おやじに水がかかる
+  const swapped = build(
+    [['AND', 300, 100]],
+    [[A, pin('p1', 'in0')], [B, pin('p1', 'in1')], [outPin('p1'), out('f1')], [A, out('o1')]],
+  );
+  const result = checkBoard(swapped, s);
   assert.equal(result.ok, false);
-  assert.deepEqual(result.row, { A: true, B: true });
+  assert.deepEqual(result.expected, { f1: true, o1: false });
+  assert.deepEqual(result.actual, { f1: false, o1: true });
 });
 
-test('ステージ10の半加算器は2つの出口を両方見る', () => {
-  const s = stage(10);
-  const board = build(
-    [['XOR', 300, 100], ['AND', 300, 300]],
+test('つながっていない入口は水がないものとして扱う', () => {
+  const s = stage(5);
+  const board = build([['AND', 300, 100]], [[A, pin('p1', 'in0')], [outPin('p1'), out('f1')]]);
+  assert.equal(checkBoard(board, s).ok, false);
+});
+
+test('ルール：出口は全部つなぎ、仕掛け箱の仕掛けは全部使って、丸を全部つなぐ', () => {
+  const s = stage(8); // 仕掛け箱にイエスマンと多様性好き
+  assert.deepEqual(ruleProblems(createBoard(), s), [
+    { kind: 'outlet', outlets: ['f1', 'o1'] },
+    { kind: 'tray', types: ['OR', 'XOR'] },
+  ]);
+  const half = build([['OR', 300, 100], ['XOR', 300, 300]], [[A, pin('p1', 'in0')], [outPin('p1'), out('f1')], [B, out('o1')]]);
+  assert.deepEqual(ruleProblems(half, s), [{ kind: 'loose', parts: ['p1', 'p2'] }]);
+  const full = build(
+    [['OR', 300, 100], ['XOR', 300, 300]],
     [
       [A, pin('p1', 'in0')],
       [B, pin('p1', 'in1')],
       [A, pin('p2', 'in0')],
       [B, pin('p2', 'in1')],
-      [outPin('p1'), out('sum')],
-      [outPin('p2'), out('carry')],
+      [outPin('p1'), out('f1')],
+      [outPin('p2'), out('o1')],
     ],
   );
-  assert.deepEqual(checkBoard(board, s), { ok: true });
+  assert.deepEqual(ruleProblems(full, s), []);
+  assert.deepEqual(checkBoard(full, s), { ok: true });
 });
 
 test('水路がぐるぐる回ると、判定は例外になる', () => {
-  const s = stage(2);
+  const s = stage(3);
   const board = build(
     [['NOT', 300, 100], ['NOT', 500, 100]],
-    [[outPin('p2'), pin('p1', 'in0')], [outPin('p1'), pin('p2', 'in0')], [outPin('p1'), out('out')]],
+    [[outPin('p2'), pin('p1', 'in0')], [outPin('p1'), pin('p2', 'in0')], [outPin('p1'), out('f1')]],
   );
   assert.throws(() => checkBoard(board, s), /ぐるぐる/);
 });
 
-test('水の流れ：蛇口を開けると、つながった水路が1になる', () => {
-  const s = stage(2);
+test('水の流れ：開いた蛇口につながった水路が1になる', () => {
+  const s = stage(4);
   const board = build(
     [['NOT', 300, 100]],
-    [[A, pin('p1', 'in0')], [outPin('p1'), out('out')]],
+    [[A, pin('p1', 'in0')], [outPin('p1'), out('o1')]],
   );
-  const closed = liveState(board, s, { A: false });
-  const opened = liveState(board, s, { A: true });
-  assert.deepEqual(closed.wires, [false, true]);
+  const opened = liveState(board, s, s.faucets);
   assert.deepEqual(opened.wires, [true, false]);
-  assert.equal(opened.outputs.out, false);
+  assert.equal(opened.outputs.o1, false);
 });
 
 test('水が届く順番：蛇口→仕掛け→出口の順に大きくなる', () => {
-  const s = stage(6);
+  const s = stage(10);
   const board = build(
-    [['AND', 300, 100], ['NOT', 300, 300]],
+    [['NOT', 300, 300], ['AND', 400, 100]],
     [
-      [A, pin('p1', 'in0')],
-      [B, pin('p1', 'in1')],
-      [outPin('p1'), pin('p2', 'in0')],
-      [outPin('p2'), out('out')],
+      [B, pin('p1', 'in0')],
+      [A, pin('p2', 'in0')],
+      [outPin('p1'), pin('p2', 'in1')],
+      [outPin('p2'), out('f1')],
     ],
   );
   assert.deepEqual(flowLevels(board, s), {
     parts: { p1: 1, p2: 2 },
     wires: [0, 0, 1, 2],
-    outlets: { out: 3 },
+    outlets: { f1: 3 },
   });
 });
 
 test('水が届く順番：ぐるぐる回る水路があると null', () => {
-  const s = stage(2);
+  const s = stage(3);
   const board = build(
     [['NOT', 300, 100], ['NOT', 500, 100]],
     [[outPin('p2'), pin('p1', 'in0')], [outPin('p1'), pin('p2', 'in0')]],

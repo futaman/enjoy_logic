@@ -16,7 +16,7 @@ export const LAYOUT = {
 };
 
 export const FAUCETS = ['A', 'B', 'C'];
-export const PART_NAMES = { NOT: '天野君', AND: '二重扉', OR: '合流', XOR: 'けんか弁' };
+export const PART_NAMES = { NOT: '天野君', AND: 'カタブツ', OR: 'イエスマン', XOR: '多様性好き' };
 
 const SNAP = 10;
 
@@ -135,7 +135,7 @@ export function toCircuit(board, stage) {
   };
 }
 
-// 予定表の全部の行と照らし合わせる。水路がぐるぐる回るときは例外になる。
+// ステージの開け方で、出口ごとの答えと照らし合わせる。水路がぐるぐる回るときは例外になる。
 export function checkBoard(board, stage) {
   return checkCircuit(toCircuit(board, stage), stage);
 }
@@ -186,4 +186,25 @@ export function flowLevels(board, stage) {
   } catch {
     return null;
   }
+}
+
+// 判定の前に守るルール。守れていないところを返す（空なら守れている）。
+//   出口は全部つなぐ（つながっていない出口は、水がないのか、つなぎ忘れなのか分からないため）。
+//   仕掛け箱の仕掛けは全部庭に置き、入口も出口もつなぐ（仕掛けを使わずに解けないようにするため）。
+export function ruleProblems(board, stage) {
+  const wiredTo = (end) => board.wires.some((wire) => sameEnd(wire.to, end));
+  const problems = [];
+  const outlets = Object.keys(stage.outputs).filter((name) => !wiredTo({ outlet: name }));
+  if (outlets.length) problems.push({ kind: 'outlet', outlets });
+  const types = Object.keys(stage.tray).filter((type) => remaining(board, stage, type) > 0);
+  if (types.length) problems.push({ kind: 'tray', types });
+  const parts = board.parts
+    .filter(
+      (part) =>
+        pinsOf(part.type).some((pin) => !wiredTo({ part: part.id, pin })) ||
+        !board.wires.some((wire) => wire.from.part === part.id),
+    )
+    .map((part) => part.id);
+  if (parts.length) problems.push({ kind: 'loose', parts });
+  return problems;
 }

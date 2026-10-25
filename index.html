@@ -172,7 +172,7 @@
     .box .label, .chip .label { display: flex; flex-direction: column; min-width: 0; }
     .box .name { font-size: 14px; font-weight: 900; white-space: nowrap; }
     .box .sub { display: block; font-size: 11px; color: var(--muted); white-space: nowrap; }
-    .faucet { cursor: pointer; }
+    .faucet, .outlet { cursor: pointer; }
     .faucet.open { background: #d6efff; }
     .faucet.kyu svg { animation: kyu 0.5s ease-out; }
     @keyframes kyu {
@@ -188,7 +188,9 @@
     .outlet.wet { background: #d6efff; }
     .outlet.ok { border-color: var(--ok); }
     .outlet.ng { border-color: var(--ng); background: #ffe3e3; }
-    .outlet.waiting { opacity: 0.75; }
+    /* 判定の前に守れていないところ（つながっていない出口や仕掛け） */
+    .box.problem { outline: 4px dashed var(--ng); outline-offset: 4px; animation: problem 0.8s ease-in-out 3; }
+    @keyframes problem { 50% { outline-color: transparent; } }
     .outlet svg { transform-origin: 50% 100%; transition: transform 0.45s cubic-bezier(0.3, 1.8, 0.5, 1); }
     /* 花は続けて水をもらうほど大きく育つ（画面からはみ出してよい） */
     .outlet.grown { z-index: 3; }
@@ -391,24 +393,7 @@
     #toolbar button { font-size: 14px; }
     #run-row { display: flex; }
     #run-status { padding: 10px 12px; border-radius: 18px; background: var(--card); border: 3px solid var(--ink); }
-    #run-status .dots { display: flex; flex-wrap: wrap; gap: 6px; }
-    #run-status .dot {
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      border: 2px solid var(--ink);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #f1ebe0;
-      color: var(--muted);
-      font-size: 14px;
-      font-weight: 900;
-    }
-    #run-status .dot.now { outline: 3px solid var(--water); color: var(--water); }
-    #run-status .dot.ok { background: var(--ok); color: #fff; }
-    #run-status .dot.ng { background: var(--ng); color: #fff; }
-    .host-row { display: flex; align-items: flex-end; gap: 8px; margin-top: 8px; }
+    .host-row { display: flex; align-items: flex-end; gap: 8px; }
     .host-row svg { width: 52px; height: 52px; flex: 0 0 52px; animation: bob 1.4s ease-in-out infinite; }
     @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
     .bubble {
@@ -417,8 +402,54 @@
       border-radius: 16px 16px 16px 4px;
       border: 3px solid var(--ink);
       background: #fff;
+      white-space: pre-line;
     }
     .bubble.ng { background: #ffe3e3; }
+
+    /* キャラの紹介カード */
+    #card {
+      position: fixed;
+      inset: 0;
+      z-index: 25;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: rgba(58, 46, 42, 0.45);
+    }
+    #card .card {
+      width: min(420px, 100%);
+      max-height: calc(100vh - 32px);
+      overflow: auto;
+      padding: 18px 18px 16px;
+      border-radius: 24px;
+      border: 3px solid var(--ink);
+      box-shadow: 0 6px 0 var(--ink);
+      background: var(--card);
+      display: grid;
+      gap: 8px;
+      animation: card-in 0.35s cubic-bezier(0.3, 1.6, 0.5, 1);
+    }
+    @keyframes card-in { 0% { transform: scale(0.6); opacity: 0; } 100% { transform: none; opacity: 1; } }
+    #card .card-icon { justify-self: center; width: 110px; height: 110px; }
+    #card .card-icon svg { width: 100%; height: 100%; overflow: visible; animation: bob 1.4s ease-in-out infinite; }
+    #card .card-name { margin: 0; text-align: center; font-size: 26px; font-weight: 900; }
+    #card .card-word {
+      margin-left: 8px;
+      padding: 1px 8px;
+      vertical-align: middle;
+      font-size: 13px;
+      border-radius: 999px;
+      border: 2px solid var(--ink);
+      background: var(--sun);
+    }
+    #card .card-catch { margin: 0; text-align: center; font-size: 18px; font-weight: 900; color: var(--ng); }
+    #card ul { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; }
+    #card .water-table { justify-self: center; border-collapse: separate; border-spacing: 6px 4px; font-weight: 800; }
+    #card .water-table th { font-size: 12px; color: var(--muted); }
+    #card .w { display: inline-block; min-width: 44px; padding: 2px 6px; border-radius: 10px; border: 2px solid var(--ink); text-align: center; font-size: 13px; }
+    #card .w1 { background: var(--water); color: #fff; }
+    #card .w0 { background: #e9dcc5; color: var(--muted); }
     #hint-text {
       margin: 0;
       padding: 8px 12px;
@@ -711,6 +742,7 @@
   </section>
 
   <div id="oyaji-show" hidden></div>
+  <div id="card" hidden></div>
 
   <div id="clear-dialog" hidden>
     <div id="confetti"></div>

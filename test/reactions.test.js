@@ -29,9 +29,9 @@ test('おやじ図鑑には、怒り方が重ならずに全部並ぶ', () => {
   assert.equal(new Set(ids).size, ANGER_LEVELS.length + RARE_ANGERS.length);
 });
 
-test('花は続けて水をもらうほど大きく育ち、4回目で森になる', () => {
+test('花は段階を追って大きく育ち、4段目で森になる', () => {
   assert.equal(growthFor(0), null);
-  const scales = [1, 2, 3, 4, 5].map((streak) => growthFor(streak).scale);
+  const scales = [1, 2, 3, 4, 5].map((level) => growthFor(level).scale);
   for (let i = 1; i < 4; i++) assert.ok(scales[i] > scales[i - 1]);
   assert.equal(growthFor(4).name, 'ひまわりの森');
   assert.equal(growthFor(9).level, 4);
@@ -44,17 +44,18 @@ test('花は失敗するたびにしおれ方が進む', () => {
 test('仕掛けのひとことは、来た水で決まる', () => {
   assert.equal(gateLine('NOT', [true]), 'やだね！');
   assert.equal(gateLine('NOT', [false]), 'じゃあ出す！');
-  assert.equal(gateLine('AND', [true, true]), 'ガシャーン！');
-  assert.equal(gateLine('AND', [true, false]), 'ガタガタ…');
+  assert.equal(gateLine('AND', [true, true]), 'よし、通れ！');
+  assert.equal(gateLine('AND', [true, false]), '規則ですので');
   assert.equal(gateLine('AND', [false, false]), null);
-  assert.equal(gateLine('XOR', [true, true]), 'ドカーン！');
-  assert.equal(gateLine('OR', [false, true]), 'どうぞどうぞ');
+  assert.equal(gateLine('OR', [false, true]), 'はいはい！');
+  assert.equal(gateLine('XOR', [true, false]), 'ちがうっていいね！');
+  assert.equal(gateLine('XOR', [true, true]), 'おんなじは、つまらん');
 });
 
 test('失敗の種類：おやじに水がかかったらおやじの演出を優先する', () => {
-  assert.equal(failureKind({ sum: true, carry: false }, { sum: false, carry: false }), 'oyaji');
-  assert.equal(failureKind({ out: true }, { out: false }), 'flower');
-  assert.equal(failureKind({ out: true }, null), 'loop');
+  assert.equal(failureKind({ f1: true, o1: false }, { f1: false, o1: true }), 'oyaji');
+  assert.equal(failureKind({ f1: true }, { f1: false }), 'flower');
+  assert.equal(failureKind({ f1: true }, null), 'loop');
 });
 
 test('司会の一言は、プレイヤーを責めない', () => {

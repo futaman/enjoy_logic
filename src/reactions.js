@@ -26,7 +26,7 @@ export function angerFor(count, random = Math.random) {
   return RARE_ANGERS[Math.floor(random() * RARE_ANGERS.length) % RARE_ANGERS.length];
 }
 
-// 花の育ち方。判定で続けて花に水をやれた回数で大きくなる。
+// 花の育ち方。水やりが成功すると、花は段階を追って大きくなり、最後はひまわりの森になる。
 export const GROWTH = [
   { level: 1, name: '花', scale: 1.3 },
   { level: 2, name: '大きな花', scale: 1.8 },
@@ -34,9 +34,9 @@ export const GROWTH = [
   { level: 4, name: 'ひまわりの森', scale: 2.8 },
 ];
 
-export function growthFor(streak) {
-  if (streak <= 0) return null;
-  return GROWTH[Math.min(streak, GROWTH.length) - 1];
+export function growthFor(level) {
+  if (level <= 0) return null;
+  return GROWTH[Math.min(level, GROWTH.length) - 1];
 }
 
 // 花に水が来なかった回数ごとの、しおれ方。
@@ -53,14 +53,13 @@ export function gateLine(type, inputs) {
     case 'NOT':
       return inputs[0] ? 'やだね！' : 'じゃあ出す！';
     case 'AND':
-      if (count === 2) return 'ガシャーン！';
-      return count === 1 ? 'ガタガタ…' : null;
+      if (count === 2) return 'よし、通れ！';
+      return count === 1 ? '規則ですので' : null;
     case 'OR':
-      if (count === 2) return 'あふれる〜！';
-      return count === 1 ? 'どうぞどうぞ' : null;
+      return count > 0 ? 'はいはい！' : null;
     case 'XOR':
-      if (count === 2) return 'ドカーン！';
-      return count === 1 ? '通ってよし' : null;
+      if (count === 1) return 'ちがうっていいね！';
+      return count === 2 ? 'おんなじは、つまらん' : null;
     default:
       return null;
   }
@@ -68,9 +67,9 @@ export function gateLine(type, inputs) {
 
 // 判定で失敗したとき、どちらの演出を見せるか。
 // おやじに水がかかった出口があれば 'oyaji'、花だけなら 'flower'、水路がぐるぐるなら 'loop'。
-export function failureKind(expected, marks) {
-  if (!marks) return 'loop';
-  const names = Object.keys(marks).filter((name) => !marks[name]);
+export function failureKind(expected, actual) {
+  if (!actual) return 'loop';
+  const names = Object.keys(expected).filter((name) => expected[name] !== actual[name]);
   return names.some((name) => !expected[name]) ? 'oyaji' : 'flower';
 }
 
