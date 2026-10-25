@@ -58,6 +58,12 @@ for (const stage of COMBINATIONAL_STAGES) {
   test(`ステージ${stage.no}（${stage.title}）の参考解が正解になる`, () => {
     assert.deepEqual(checkCircuit(stage.solution, stage), { ok: true });
   });
+
+  test(`ステージ${stage.no}（${stage.title}）の参考解は、仕掛け箱の中身ちょうどで作れる`, () => {
+    const used = {};
+    for (const gate of stage.solution.gates) used[gate.type] = (used[gate.type] ?? 0) + 1;
+    assert.deepEqual(used, stage.tray);
+  });
 }
 
 test('違う回路は、どの行で違ったかを返す', () => {

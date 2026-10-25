@@ -4,60 +4,90 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>論理回路まなびゲーム</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800;900&display=swap" rel="stylesheet">
   <style>
+    /* 教育番組のような、太い線のコミカルな見た目（仕様書 第2版「見た目のトーン」） */
     :root {
-      --bg: #f4f7f1;
-      --ink: #1d2a2a;
-      --muted: #5b6b6b;
-      --line: #6b7785;
-      --water: #2a7fd4;
-      --dry: #b9bfc4;
-      --ok: #1f9d55;
-      --ng: #d64545;
-      --pending: #f4b400;
+      --bg: #fff4dc;
+      --ink: #3a2e2a;
+      --muted: #7a6a5f;
+      --line: #3a2e2a;
+      --water: #1e9bff;
+      --dry: #d2b48c;
+      --ok: #2bb673;
+      --ng: #ff5a5f;
+      --pending: #ffb400;
+      --sun: #ffc93c;
+      --card: #fffdf7;
       --s: 1;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: system-ui, "Hiragino Sans", "Noto Sans JP", sans-serif;
+      font-family: "M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+      font-weight: 500;
       font-size: 16px;
       color: var(--ink);
-      background: var(--bg);
+      background:
+        radial-gradient(circle at 10% 0%, #ffe7a8 0 120px, transparent 121px),
+        radial-gradient(circle at 95% 10%, #ffd6e2 0 90px, transparent 91px),
+        var(--bg);
+      min-height: 100vh;
     }
     [hidden] { display: none !important; }
-    #load-error { margin: 16px; padding: 12px 16px; border-radius: 12px; background: #fff0f0; border: 2px solid var(--ng); }
+    #load-error { margin: 16px; padding: 12px 16px; border-radius: 16px; background: #fff0f0; border: 3px solid var(--ng); }
 
-    header { padding: 10px 16px 0; }
+    header { padding: 12px 16px 0; }
     .top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    h1 { font-size: 20px; margin: 0; }
-    #lesson { color: var(--muted); font-size: 14px; }
+    h1 {
+      font-size: 22px;
+      font-weight: 900;
+      margin: 0;
+      letter-spacing: 0.02em;
+      text-shadow: 2px 2px 0 #fff;
+    }
+    #lesson {
+      font-size: 13px;
+      font-weight: 800;
+      padding: 2px 10px;
+      border-radius: 999px;
+      background: var(--sun);
+      border: 2px solid var(--ink);
+    }
     #mission {
       margin: 10px 0 0;
       padding: 10px 14px;
-      border-radius: 12px;
-      background: #fff;
-      border-left: 6px solid var(--water);
+      border-radius: 18px;
+      background: var(--card);
+      border: 3px solid var(--ink);
+      box-shadow: 0 4px 0 var(--ink);
       font-size: 18px;
-      font-weight: bold;
+      font-weight: 800;
     }
 
     button {
       min-width: 44px;
       min-height: 44px;
-      padding: 0 12px;
+      padding: 0 14px;
       font: inherit;
+      font-weight: 800;
       color: var(--ink);
-      border: 1px solid #9aa5b1;
-      border-radius: 10px;
+      border: 3px solid var(--ink);
+      border-radius: 14px;
       background: #fff;
+      box-shadow: 0 4px 0 var(--ink);
       cursor: pointer;
+      transition: transform 0.08s, box-shadow 0.08s;
     }
+    button:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
     button:disabled { opacity: 0.4; cursor: default; }
-    button.primary { background: var(--water); color: #fff; border-color: var(--water); font-weight: bold; }
-    button.big { min-height: 52px; font-size: 18px; width: 100%; }
+    button.primary { background: var(--ng); color: #fff; }
+    button.big { min-height: 60px; font-size: 22px; font-weight: 900; width: 100%; letter-spacing: 0.05em; }
 
     main { display: flex; flex-direction: column; gap: 12px; padding: 12px 16px 16px; }
+    main > section { display: flex; flex-direction: column; gap: 10px; }
 
     /* 庭：ピンチ・1本指で動かす（app.js）。touch-action は使わない */
     #garden-wrap {
@@ -65,14 +95,29 @@
       width: 100%;
       overflow: auto;
       scrollbar-width: none;
-      border-radius: 14px;
-      border: 2px solid #c9d6c2;
+      border-radius: 22px;
+      border: 3px solid var(--ink);
+      box-shadow: 0 5px 0 var(--ink);
       background:
-        linear-gradient(#e6f3d9 0 35%, #d2e8bd 35%),
-        #d2e8bd;
+        radial-gradient(ellipse 60% 30% at 20% 38%, #b7e57a 0 98%, transparent 100%),
+        radial-gradient(ellipse 50% 28% at 85% 40%, #a8dd6a 0 98%, transparent 100%),
+        linear-gradient(#bfe9ff 0 32%, #9fd85a 32%);
       touch-action: none;
     }
     #garden-wrap::-webkit-scrollbar { display: none; }
+    /* 花に続けて水をやれたとき：庭がひまわりの森になる */
+    #garden-wrap::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 50% 50%, #a0612d 0 7px, #ffc93c 8px 15px, transparent 16px) 0 0 / 46px 46px,
+        radial-gradient(circle at 50% 50%, #ffd23f 0 5px, #ff8fb1 6px 11px, transparent 12px) 23px 23px / 46px 46px;
+      transition: opacity 0.6s;
+    }
+    #garden-wrap.forest::before { opacity: 0.55; }
     #garden-box { position: relative; margin: 0 auto; }
     #garden {
       position: absolute;
@@ -85,28 +130,26 @@
       user-select: none;
     }
     #wires { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
-    #wires .wire { fill: none; stroke: var(--dry); stroke-width: 7; stroke-linejoin: round; stroke-linecap: round; }
-    #wires .wire.on { stroke: var(--water); }
+    /* 0 の水路は乾いた土色で、ひび割れ模様。1 は鮮やかな青 */
+    #wires .wire { fill: none; stroke: var(--dry); stroke-width: 9; stroke-linejoin: round; stroke-linecap: round; stroke-dasharray: 14 3 4 3; }
+    #wires .wire.on { stroke: var(--water); stroke-dasharray: none; stroke-width: 10; }
     #wires .wire.selected { stroke: var(--pending); }
     #wires .hit { fill: none; stroke: transparent; stroke-width: 24; pointer-events: stroke; cursor: pointer; }
-    #wires .temp { fill: none; stroke: var(--pending); stroke-width: 4; stroke-dasharray: 6 6; }
-    /* まだ水が届いていない水路（実行中） */
-    #wires .wire.waiting { stroke: #dde3e8; stroke-dasharray: 2 12; }
-    /* 水が届いた瞬間：水路の端から端まで水が伸びる */
+    #wires .temp { fill: none; stroke: var(--pending); stroke-width: 5; stroke-dasharray: 6 6; }
+    #wires .wire.waiting { stroke: #e9dcc5; stroke-dasharray: 2 12; }
     #wires .wire.arrive {
       stroke-dasharray: 100;
       stroke-dashoffset: 100;
       animation: fill-in var(--step, 300ms) linear forwards;
     }
     @keyframes fill-in { to { stroke-dashoffset: 0; } }
-    /* 水が流れている水路の、流れる模様 */
     #wires .flow {
       fill: none;
-      stroke: rgba(255, 255, 255, 0.75);
-      stroke-width: 2.5;
+      stroke: rgba(255, 255, 255, 0.85);
+      stroke-width: 3;
       stroke-linecap: round;
-      stroke-dasharray: 3 15;
-      animation: flow 0.9s linear infinite;
+      stroke-dasharray: 4 14;
+      animation: flow 0.7s linear infinite;
     }
     @keyframes flow { to { stroke-dashoffset: -18; } }
 
@@ -119,61 +162,140 @@
       display: flex;
       align-items: center;
       gap: 4px;
-      border: 2px solid var(--line);
-      border-radius: 12px;
-      background: #fff;
-      box-shadow: 0 2px 0 rgba(0, 0, 0, 0.08);
-      line-height: 1.2;
+      border: 3px solid var(--ink);
+      border-radius: 16px;
+      background: var(--card);
+      box-shadow: 0 4px 0 var(--ink);
+      line-height: 1.15;
     }
-    .box svg { width: 34px; height: 34px; flex: 0 0 34px; }
+    .box svg { width: 38px; height: 38px; flex: 0 0 38px; overflow: visible; }
     .box .label, .chip .label { display: flex; flex-direction: column; min-width: 0; }
-    .box .name { font-size: 14px; font-weight: bold; white-space: nowrap; }
-    .box .sub { display: block; font-size: 12px; color: var(--muted); white-space: nowrap; }
-    .faucet { width: 120px; cursor: pointer; }
-    .faucet.open { background: #d8ecff; border-color: var(--water); }
-    .outlet.ok { border-color: var(--ok); }
-    .outlet.ng { border-color: var(--ng); }
-    .outlet.wet { background: #d8ecff; }
-    .part { cursor: grab; touch-action: none; }
-    .part.on { border-color: var(--water); }
-    /* 仕掛けに水が届いて、動いた瞬間 */
-    .part.working { animation: work calc(var(--step, 300ms) * 1.4) ease-out; }
-    @keyframes work {
-      0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(42, 127, 212, 0.5); }
-      40% { transform: scale(1.12); box-shadow: 0 0 0 8px rgba(42, 127, 212, 0.25); }
-      100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(42, 127, 212, 0); }
+    .box .name { font-size: 14px; font-weight: 900; white-space: nowrap; }
+    .box .sub { display: block; font-size: 11px; color: var(--muted); white-space: nowrap; }
+    .faucet { cursor: pointer; }
+    .faucet.open { background: #d6efff; }
+    .faucet.kyu svg { animation: kyu 0.5s ease-out; }
+    @keyframes kyu {
+      0% { transform: rotate(0); }
+      25% { transform: rotate(-14deg) scale(1.15); }
+      55% { transform: rotate(10deg); }
+      80% { transform: rotate(-5deg); }
+      100% { transform: rotate(0); }
     }
-    .outlet.waiting { opacity: 0.6; }
-    /* 出口に結果が出た瞬間：花は咲き、おやじは怒って揺れる */
+    .faucet .drop { animation: drip 0.6s ease-in infinite; }
+    @keyframes drip { 0% { transform: translateY(-3px); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateY(5px); opacity: 0; } }
+    .outlet { z-index: 1; }
+    .outlet.wet { background: #d6efff; }
+    .outlet.ok { border-color: var(--ok); }
+    .outlet.ng { border-color: var(--ng); background: #ffe3e3; }
+    .outlet.waiting { opacity: 0.75; }
+    .outlet svg { transform-origin: 50% 100%; transition: transform 0.45s cubic-bezier(0.3, 1.8, 0.5, 1); }
+    /* 花は続けて水をもらうほど大きく育つ（画面からはみ出してよい） */
+    .outlet.grown { z-index: 3; }
+    .outlet.grown svg { transform: scale(var(--grow, 1)); }
     .outlet.arrive svg { animation: pop 0.5s ease-out; }
+    .outlet.grown.arrive svg { animation: grow-pop 0.6s cubic-bezier(0.3, 1.8, 0.5, 1); }
     .outlet.arrive.ng { animation: shake 0.45s ease-in-out; }
-    @keyframes pop { 0% { transform: scale(0.6); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
+    .outlet .oyaji.sleep .snot { animation: snot 1.6s ease-in-out infinite; transform-origin: 23.5px 27px; }
+    .outlet .oyaji.sleep .zzz { animation: zzz 1.6s ease-in-out infinite; }
+    .outlet .oyaji.angry { animation: rage 0.18s linear infinite; }
+    @keyframes snot { 0%, 100% { transform: scale(0.6); } 50% { transform: scale(1.3); } }
+    @keyframes zzz { 0% { opacity: 0; transform: translate(0, 4px); } 50% { opacity: 1; } 100% { opacity: 0; transform: translate(3px, -4px); } }
+    @keyframes rage { 0%, 100% { transform: translate(0, 0); } 25% { transform: translate(-1.5px, 1px); } 75% { transform: translate(1.5px, -1px); } }
+    /* 花がしおれる：1回目は垂れる、2回目は倒れる、3回目は干からびて飛んでいく */
+    .outlet.wilt-1 svg { transform: rotate(-12deg); transform-origin: 50% 100%; }
+    .outlet.wilt-2 svg { transform: rotate(-80deg) translate(-4px, 4px); transform-origin: 50% 100%; }
+    .outlet.wilt-3 svg { animation: blow-away 1.8s ease-in forwards; }
+    @keyframes blow-away {
+      0% { transform: none; }
+      30% { transform: translate(4px, -6px) rotate(20deg); }
+      100% { transform: translate(140px, -160px) rotate(540deg) scale(0.4); opacity: 0; }
+    }
+    @keyframes pop { 0% { transform: scale(0.6); } 60% { transform: scale(1.3); } 100% { transform: scale(1); } }
+    @keyframes grow-pop { 0% { transform: scale(calc(var(--grow, 1) * 0.6)); } 100% { transform: scale(var(--grow, 1)); } }
     @keyframes shake {
       0%, 100% { transform: translateX(0); }
-      25% { transform: translateX(-5px); }
-      75% { transform: translateX(5px); }
+      20% { transform: translateX(-7px) rotate(-2deg); }
+      40% { transform: translateX(7px) rotate(2deg); }
+      60% { transform: translateX(-5px); }
+      80% { transform: translateX(5px); }
     }
     .mark {
       position: absolute;
       right: -12px;
       top: -14px;
-      width: 28px;
-      height: 28px;
+      width: 30px;
+      height: 30px;
       border-radius: 50%;
+      border: 3px solid var(--ink);
       display: flex;
       align-items: center;
       justify-content: center;
       color: #fff;
-      font-weight: bold;
+      font-weight: 900;
+      z-index: 4;
       animation: pop 0.35s ease-out;
     }
     .mark.ok { background: var(--ok); }
     .mark.ng { background: var(--ng); }
-    .faucet .drop { animation: drip 1s ease-in infinite; }
-    @keyframes drip { 0% { transform: translateY(-3px); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateY(4px); opacity: 0; } }
+
+    /* ふきだし（仕掛けや出口のひとこと） */
+    .say {
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 8px);
+      transform: translateX(-50%);
+      padding: 2px 10px;
+      border: 3px solid var(--ink);
+      border-radius: 14px;
+      background: #fff;
+      font-size: 14px;
+      font-weight: 900;
+      white-space: nowrap;
+      z-index: 5;
+      pointer-events: none;
+    }
+    .say::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 100%;
+      width: 10px;
+      height: 10px;
+      background: #fff;
+      border-right: 3px solid var(--ink);
+      border-bottom: 3px solid var(--ink);
+      transform: translate(-50%, -6px) rotate(45deg);
+    }
+    .say.pop { animation: say-pop 0.35s cubic-bezier(0.3, 1.8, 0.5, 1); }
+    .say.mad { background: var(--ng); color: #fff; }
+    .say.mad::after { background: var(--ng); }
+    .say.sad { background: #e9e2d6; }
+    .say.sad::after { background: #e9e2d6; }
+    .say.boom { background: var(--sun); font-size: 16px; }
+    .say.boom::after { background: var(--sun); }
+    @keyframes say-pop { 0% { transform: translateX(-50%) scale(0.2); } 100% { transform: translateX(-50%) scale(1); } }
+
+    .part { cursor: grab; touch-action: none; }
+    .part.on { background: #d6efff; }
+    .part.working { animation: work calc(var(--step, 300ms) * 1.6) cubic-bezier(0.3, 1.6, 0.5, 1); }
+    @keyframes work {
+      0% { transform: scale(1, 1); }
+      30% { transform: scale(1.18, 0.85); }
+      60% { transform: scale(0.92, 1.1); }
+      100% { transform: scale(1, 1); }
+    }
+    /* けんか弁：水どうしが正面衝突 */
+    .part.collide { animation: collide 0.6s ease-out; }
+    @keyframes collide {
+      0% { transform: scale(1); filter: none; }
+      20% { transform: scale(1.3) rotate(-6deg); filter: brightness(1.4); }
+      50% { transform: scale(1.1) rotate(5deg); }
+      100% { transform: scale(1); filter: none; }
+    }
     .part .name { font-size: 14px; }
 
-    /* ピンの見た目は 16px、触れる範囲は 44px（画面の拡大率に関係なく） */
+    /* ピンの見た目は 18px、触れる範囲は 44px（画面の拡大率に関係なく） */
     .pin {
       position: absolute;
       width: calc(44px / var(--s));
@@ -192,10 +314,10 @@
       height: calc(18px / var(--s));
       border-radius: 50%;
       background: #fff;
-      border: calc(3px / var(--s)) solid #5b6b6b;
+      border: calc(3px / var(--s)) solid var(--ink);
     }
-    .pin.wet::after { border-color: var(--water); background: var(--water); }
-    .pin.pending { outline: calc(3px / var(--s)) solid var(--pending); }
+    .pin.wet::after { background: var(--water); }
+    .pin.pending { outline: calc(4px / var(--s)) solid var(--pending); }
 
     .ghost {
       position: fixed;
@@ -205,86 +327,254 @@
       display: flex;
       align-items: center;
       gap: 4px;
-      border: 2px dashed #333;
-      border-radius: 12px;
+      border: 3px dashed var(--ink);
+      border-radius: 16px;
       background: #fff;
-      opacity: 0.85;
+      opacity: 0.9;
       pointer-events: none;
       z-index: 10;
       font-size: 13px;
+      font-weight: 900;
+      transform: rotate(-4deg);
     }
-    .ghost svg { width: 34px; height: 34px; }
+    .ghost svg { width: 36px; height: 36px; }
 
-    #tray-title { margin: 0; font-size: 14px; color: var(--muted); }
-    #tray { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 6px; }
+    /* 庭の上に出る大きな書き文字 */
+    .pop-text {
+      position: absolute;
+      right: 8%;
+      top: 18%;
+      font-size: 44px;
+      font-weight: 900;
+      color: #fff;
+      -webkit-text-stroke: 3px var(--ink);
+      paint-order: stroke fill;
+      text-shadow: 4px 4px 0 var(--ink);
+      pointer-events: none;
+      z-index: 6;
+      animation: pop-text 1.2s cubic-bezier(0.3, 1.6, 0.5, 1) forwards;
+    }
+    .pop-text.grow { color: #ff8fb1; }
+    @keyframes pop-text {
+      0% { transform: scale(0.2) rotate(-20deg); opacity: 0; }
+      25% { transform: scale(1.2) rotate(-8deg); opacity: 1; }
+      70% { transform: scale(1) rotate(-8deg); opacity: 1; }
+      100% { transform: scale(1) translateY(-30px) rotate(-8deg); opacity: 0; }
+    }
+
+    #tray-title { margin: 0; font-size: 14px; font-weight: 800; color: var(--muted); }
+    #tray { display: flex; gap: 10px; overflow-x: auto; padding: 4px 2px 10px; }
     #tray p { margin: 0; color: var(--muted); }
     .chip {
       flex: 0 0 auto;
-      min-width: 132px;
-      min-height: 56px;
+      min-width: 136px;
+      min-height: 58px;
       padding: 6px 10px 6px 6px;
       display: flex;
       align-items: center;
       gap: 6px;
-      border: 2px solid var(--line);
-      border-radius: 12px;
-      background: #fff;
+      border: 3px solid var(--ink);
+      border-radius: 16px;
+      background: var(--card);
+      box-shadow: 0 4px 0 var(--ink);
       touch-action: none;
       cursor: grab;
     }
-    .chip svg { width: 36px; height: 36px; flex: 0 0 36px; }
-    .chip .name { display: block; font-size: 14px; font-weight: bold; }
+    .chip:hover svg { animation: wiggle 0.4s ease-in-out; }
+    @keyframes wiggle { 0%, 100% { transform: rotate(0); } 33% { transform: rotate(-10deg); } 66% { transform: rotate(10deg); } }
+    .chip svg { width: 38px; height: 38px; flex: 0 0 38px; overflow: visible; }
+    .chip .name { display: block; font-size: 14px; font-weight: 900; }
     .chip .sub { display: block; font-size: 12px; color: var(--muted); }
     .chip.empty { opacity: 0.4; }
 
     #toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
+    #toolbar button { font-size: 14px; }
     #run-row { display: flex; }
-    #run-status { padding: 10px 12px; border-radius: 12px; background: #fff; border: 2px solid #dde3e8; }
+    #run-status { padding: 10px 12px; border-radius: 18px; background: var(--card); border: 3px solid var(--ink); }
     #run-status .dots { display: flex; flex-wrap: wrap; gap: 6px; }
     #run-status .dot {
-      width: 30px;
-      height: 30px;
+      width: 32px;
+      height: 32px;
       border-radius: 50%;
+      border: 2px solid var(--ink);
       display: flex;
       align-items: center;
       justify-content: center;
-      background: #eef1f3;
+      background: #f1ebe0;
       color: var(--muted);
       font-size: 14px;
-      font-weight: bold;
+      font-weight: 900;
     }
     #run-status .dot.now { outline: 3px solid var(--water); color: var(--water); }
     #run-status .dot.ok { background: var(--ok); color: #fff; }
     #run-status .dot.ng { background: var(--ng); color: #fff; }
-    #run-status p { margin: 8px 0 0; }
-    #run-status p.ng { color: var(--ng); font-weight: bold; }
+    .host-row { display: flex; align-items: flex-end; gap: 8px; margin-top: 8px; }
+    .host-row svg { width: 52px; height: 52px; flex: 0 0 52px; animation: bob 1.4s ease-in-out infinite; }
+    @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+    .bubble {
+      margin: 0;
+      padding: 8px 12px;
+      border-radius: 16px 16px 16px 4px;
+      border: 3px solid var(--ink);
+      background: #fff;
+    }
+    .bubble.ng { background: #ffe3e3; }
     #hint-text {
       margin: 0;
       padding: 8px 12px;
       white-space: pre-line;
-      border-radius: 10px;
-      background: #fff8d6;
+      border-radius: 14px;
+      border: 3px solid var(--ink);
+      background: #fff6c2;
     }
 
     #tutorial {
       padding: 12px 14px;
-      border-radius: 12px;
-      background: #eef6ff;
-      border: 2px solid #b9d8f7;
+      border-radius: 18px;
+      background: #e3f4ff;
+      border: 3px solid var(--ink);
     }
     #tutorial h2 { font-size: 16px; margin: 0 0 6px; }
     #tutorial ol { margin: 0 0 8px; padding-left: 0; list-style: none; display: grid; gap: 6px; }
-    #tutorial li { padding: 6px 8px; border-radius: 8px; background: #fff; }
+    #tutorial li { padding: 6px 8px; border-radius: 10px; background: #fff; border: 2px solid var(--ink); }
     #tutorial li.now { outline: 3px solid var(--water); }
     #tutorial li.done { color: var(--muted); text-decoration: line-through; }
     #tutorial li::before { content: "□ "; }
     #tutorial li.done::before { content: "✓ "; color: var(--ok); }
 
-    #stage-select { padding: 0 16px 16px; }
-    #stage-select h2 { font-size: 18px; }
-    #stage-list { list-style: none; padding: 0; display: grid; gap: 8px; }
-    #stage-list button { width: 100%; text-align: left; }
-    #stage-list button:disabled { color: #889; }
+    #stage-select { padding: 0 16px 24px; max-width: 760px; margin: 0 auto; }
+    #stage-select h2 { font-size: 22px; font-weight: 900; }
+    .logo { text-align: center; margin: 16px 0 4px; }
+    .logo h2 { margin: 0; font-size: 30px; text-shadow: 3px 3px 0 #fff; }
+    .logo .cast { display: flex; justify-content: center; gap: 6px; }
+    .logo .cast svg { width: 64px; height: 64px; overflow: visible; }
+    .logo .cast svg:nth-child(odd) { animation: bob 1.2s ease-in-out infinite; }
+    .logo .cast svg:nth-child(even) { animation: bob 1.2s ease-in-out 0.6s infinite; }
+    #stage-list { list-style: none; padding: 0; display: grid; gap: 10px; }
+    #stage-list button { width: 100%; text-align: left; min-height: 52px; }
+    #stage-list button:disabled { color: #9a8c80; }
+    #zukan { margin-top: 20px; padding: 12px 14px; border-radius: 18px; background: var(--card); border: 3px solid var(--ink); }
+    #zukan h2 { margin: 0 0 8px; font-size: 18px; }
+    #zukan-list { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+    #zukan-list li { display: grid; justify-items: center; gap: 2px; padding: 6px; border-radius: 12px; background: #fff; border: 2px solid var(--ink); font-size: 12px; font-weight: 800; text-align: center; }
+    #zukan-list li svg { width: 54px; height: 54px; overflow: visible; }
+    #zukan-list li.unknown svg { filter: brightness(0) opacity(0.25); }
+    #settings { margin-top: 12px; font-weight: 800; display: flex; gap: 8px; align-items: center; }
+    #settings input { width: 22px; height: 22px; }
+
+    /* おやじが怒る：画面いっぱいの見せ場（仕様書 第2版「失敗の演出」） */
+    #oyaji-show {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      background: rgba(58, 46, 42, 0.55);
+      cursor: pointer;
+    }
+    #oyaji-show .burst {
+      position: absolute;
+      inset: -50%;
+      background: repeating-conic-gradient(from 0deg, #ffd23f 0 7deg, #ff7a3c 7deg 14deg);
+      animation: spin 6s linear infinite;
+    }
+    #oyaji-show.daibutsu .burst { background: repeating-conic-gradient(from 0deg, #fff3b0 0 7deg, #ffd23f 7deg 14deg); }
+    #oyaji-show.enka .burst { background: repeating-conic-gradient(from 0deg, #ff8fb1 0 7deg, #a565c9 7deg 14deg); }
+    #oyaji-show.happy .burst { background: repeating-conic-gradient(from 0deg, #bfe9ff 0 7deg, #e3f4ff 7deg 14deg); }
+    #oyaji-show.calm .burst { animation: none; background: #ffd23f; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #oyaji-show .big-oyaji { position: relative; width: min(62vmin, 360px); height: min(62vmin, 360px); display: flex; flex-wrap: wrap; justify-content: center; align-items: center; }
+    #oyaji-show .big-oyaji > svg { width: 100%; height: 100%; overflow: visible; }
+    #oyaji-show .shout {
+      position: relative;
+      margin: 8px 16px 0;
+      font-size: clamp(34px, 9vmin, 72px);
+      font-weight: 900;
+      color: #fff;
+      text-align: center;
+      -webkit-text-stroke: 4px var(--ink);
+      paint-order: stroke fill;
+      text-shadow: 5px 5px 0 var(--ink);
+      animation: shout 0.5s cubic-bezier(0.3, 1.8, 0.5, 1);
+    }
+    #oyaji-show .caption {
+      position: relative;
+      margin: 8px 0 0;
+      padding: 4px 14px;
+      border-radius: 999px;
+      border: 3px solid var(--ink);
+      background: #fff;
+      font-weight: 900;
+    }
+    #oyaji-show .skip { position: relative; margin: 10px 0 0; font-size: 13px; font-weight: 800; color: #fff; text-shadow: 0 1px 2px #000; }
+    @keyframes shout { 0% { transform: scale(0.1) rotate(-15deg); } 100% { transform: scale(1) rotate(-4deg); } }
+    /* 1回目：飛び起きる */
+    #oyaji-show.kora .big-oyaji { animation: jump 0.7s cubic-bezier(0.3, 1.6, 0.5, 1); }
+    @keyframes jump {
+      0% { transform: translateY(60%) scale(1.2, 0.6); }
+      45% { transform: translateY(-18%) scale(0.85, 1.2); }
+      70% { transform: translateY(0) scale(1.1, 0.9); }
+      100% { transform: none; }
+    }
+    /* 2回目：やかんのように湯気を噴く */
+    #oyaji-show.steam .big-oyaji { animation: rage 0.12s linear infinite; }
+    #oyaji-show g.steam circle { animation: puff 0.6s ease-out infinite; }
+    #oyaji-show g.steam circle:nth-child(2) { animation-delay: 0.2s; }
+    #oyaji-show g.steam circle:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes puff { 0% { transform: translateY(6px) scale(0.4); opacity: 1; } 100% { transform: translateY(-10px) scale(1.4); opacity: 0; } }
+    /* 3回目：巨大化して迫ってくる */
+    #oyaji-show.giant .big-oyaji { animation: giant 2.4s cubic-bezier(0.2, 1.2, 0.4, 1) forwards; }
+    @keyframes giant {
+      0% { transform: scale(0.5); }
+      60% { transform: scale(1.9) rotate(-3deg); }
+      70% { transform: scale(1.85) rotate(3deg); }
+      80% { transform: scale(1.95) rotate(-3deg); }
+      100% { transform: scale(2) rotate(0); }
+    }
+    /* 4回目：爆発して空へ打ち上がり、お星さまになる */
+    #oyaji-show.rocket .big-oyaji { animation: rocket 2.2s ease-in forwards; }
+    @keyframes rocket {
+      0% { transform: none; }
+      10%, 30% { transform: translateX(-8px) scale(1.2); }
+      20%, 40% { transform: translateX(8px) scale(1.3); }
+      50% { transform: scale(1.4); filter: brightness(2); }
+      100% { transform: translateY(-140vh) rotate(720deg) scale(0.3); }
+    }
+    #oyaji-show .star-after { position: absolute; top: 8%; width: 70px; height: 70px; opacity: 0; animation: twinkle 1s ease-out 1.6s forwards; }
+    #oyaji-show .star-after svg { width: 100%; height: 100%; }
+    @keyframes twinkle { 0% { opacity: 0; transform: scale(0); } 60% { opacity: 1; transform: scale(1.6) rotate(30deg); } 100% { opacity: 1; transform: scale(1) rotate(0); } }
+    /* レア：演歌を歌い出す */
+    #oyaji-show.enka .big-oyaji { animation: sway 1.4s ease-in-out infinite; }
+    #oyaji-show .note { animation: note 1.2s ease-out infinite; }
+    @keyframes sway { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(8deg); } }
+    @keyframes note { 0% { transform: translateY(4px); opacity: 0; } 50% { opacity: 1; } 100% { transform: translateY(-8px); opacity: 0; } }
+    /* レア：大仏になる */
+    #oyaji-show.daibutsu .big-oyaji { animation: daibutsu 2.4s ease-out forwards; }
+    #oyaji-show .halo { animation: halo 1.2s ease-in-out infinite; }
+    @keyframes daibutsu { 0% { transform: scale(0.3); filter: brightness(3); } 40% { transform: scale(1.2); filter: brightness(1.4); } 100% { transform: scale(1.3); filter: none; } }
+    @keyframes halo { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+    /* レア：少しだけ喜ぶ（拍子抜け） */
+    #oyaji-show.happy .big-oyaji { animation: bob 2s ease-in-out infinite; }
+    /* レア：分身して怒る */
+    #oyaji-show.clone .clone-one { width: 33%; height: 33%; animation: rage 0.15s linear infinite; }
+    #oyaji-show.clone .clone-one:nth-child(even) { animation-delay: 0.07s; }
+    #oyaji-show.clone .clone-one svg { width: 100%; height: 100%; }
+    /* レア：正座で説教 */
+    #oyaji-show.seiza .big-oyaji { animation: nod 1s ease-in-out infinite; }
+    @keyframes nod { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(6deg) translateY(6px); } }
+    #oyaji-show.calm .big-oyaji, #oyaji-show.calm .clone-one { animation-duration: 0.01s !important; animation-iteration-count: 1 !important; }
+
+    /* 画面全体の揺れ（設定で弱められる） */
+    body.shake { animation: body-shake 0.12s linear 12; }
+    @keyframes body-shake {
+      0%, 100% { transform: translate(0, 0); }
+      25% { transform: translate(-6px, 4px); }
+      50% { transform: translate(5px, -5px); }
+      75% { transform: translate(-4px, -3px); }
+    }
 
     #clear-dialog {
       position: fixed;
@@ -292,23 +582,59 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      background: rgba(0, 0, 0, 0.4);
+      background: rgba(58, 46, 42, 0.45);
       z-index: 20;
+      overflow: hidden;
     }
-    #clear-dialog div {
+    #clear-dialog .card {
+      position: relative;
       padding: 24px;
-      border-radius: 14px;
-      background: #fff;
+      border-radius: 24px;
+      border: 3px solid var(--ink);
+      box-shadow: 0 6px 0 var(--ink);
+      background: var(--card);
       text-align: center;
       display: grid;
       gap: 12px;
-      min-width: 260px;
+      min-width: 280px;
+      max-width: calc(100vw - 32px);
+      animation: shout 0.5s cubic-bezier(0.3, 1.8, 0.5, 1);
     }
-    #clear-stars { font-size: 32px; color: #e0a800; margin: 0; }
+    #clear-dialog .title { margin: 0; font-size: 30px; font-weight: 900; color: var(--ng); -webkit-text-stroke: 1px var(--ink); }
+    #clear-cast { display: flex; justify-content: center; align-items: flex-end; gap: 2px; }
+    #clear-cast svg { width: 54px; height: 54px; overflow: visible; animation: bob 0.8s ease-in-out infinite; }
+    #clear-cast svg:nth-child(even) { animation-delay: 0.4s; }
+    #clear-cast .oyaji { width: 64px; height: 64px; }
+    #clear-cast .hands { animation: clap 0.3s ease-in-out infinite; transform-origin: 20px 33px; }
+    @keyframes clap { 50% { transform: scaleX(0.6); } }
+    #clear-stars { font-size: 40px; color: #ffb400; margin: 0; -webkit-text-stroke: 1.5px var(--ink); }
+    #confetti i {
+      position: absolute;
+      top: -20px;
+      width: 10px;
+      height: 16px;
+      border: 1.5px solid var(--ink);
+      border-radius: 2px;
+      animation: confetti 2.6s ease-in forwards;
+    }
+    @keyframes confetti { to { transform: translateY(110vh) rotate(var(--spin, 360deg)); } }
+    #clear-dialog.fireworks::before, #clear-dialog.fireworks::after {
+      content: "";
+      position: absolute;
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      background: radial-gradient(circle, transparent 0 30%, #ffd23f 31% 34%, transparent 35% 50%, #ff5a5f 51% 54%, transparent 55% 70%, #1e9bff 71% 74%, transparent 75%);
+      animation: firework 1.4s ease-out infinite;
+    }
+    #clear-dialog.fireworks::before { left: 6%; top: 8%; }
+    #clear-dialog.fireworks::after { right: 6%; top: 14%; animation-delay: 0.7s; }
+    @keyframes firework { 0% { transform: scale(0.1); opacity: 1; } 100% { transform: scale(1.4); opacity: 0; } }
 
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation: none !important; transition: none !important; }
       #wires .wire.arrive { stroke-dashoffset: 0; }
+      #oyaji-show .star-after { opacity: 1; }
     }
 
     @media (min-width: 900px) {
@@ -370,14 +696,27 @@
   </main>
 
   <section id="stage-select" hidden>
+    <div class="logo">
+      <div class="cast" id="logo-cast"></div>
+      <h2>論理回路まなびゲーム</h2>
+    </div>
     <h2>ステージ</h2>
     <ul id="stage-list"></ul>
     <p><button id="back">もどる</button></p>
+    <section id="zukan">
+      <h2>おやじ図鑑　<span id="zukan-count"></span></h2>
+      <ul id="zukan-list"></ul>
+      <label id="settings"><input type="checkbox" id="calm"> 画面のゆれと点滅を弱める</label>
+    </section>
   </section>
 
+  <div id="oyaji-show" hidden></div>
+
   <div id="clear-dialog" hidden>
-    <div>
-      <p>水やり成功！</p>
+    <div id="confetti"></div>
+    <div class="card">
+      <p class="title">水やり大成功！</p>
+      <div id="clear-cast"></div>
       <p id="clear-stars"></p>
       <button id="next-stage" class="primary">次のステージ</button>
       <button id="to-menu">ステージ選びへ</button>

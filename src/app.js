@@ -1,6 +1,15 @@
 import { COMBINATIONAL_STAGES } from './stages.js';
 import { TUTORIALS } from './tutorial.js';
-import { faucetIcon, flowerIcon, gateIcon, oyajiIcon } from './icons.js';
+import { faucetIcon, flowerIcon, gateIcon, hostIcon, oyajiIcon, starIcon } from './icons.js';
+import {
+  ALL_ANGERS,
+  angerFor,
+  failureKind,
+  gateLine,
+  growthFor,
+  hostLine,
+  wiltFor,
+} from './reactions.js';
 import { allRows } from './logic.js';
 import {
   LAYOUT,
@@ -28,6 +37,7 @@ const OUTLET_NAMES = { out: '出口', sum: '花壇（1の位）', carry: '花壇
 const PLAY_STEP_MS = 150; // 蛇口を触ったとき、水が1段進む時間（仕掛け1つで約0.3秒）
 const JUDGE_STEP_MS = 300; // 実行のとき、水が1段進む時間
 const REDUCED_MOTION = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+const OYAJI_SHOW_MS = 2600; // おやじが怒る演出の長さ（タップで飛ばせる）
 const MIN_SCALE = 0.8; // 文字が読める最小の大きさ（小さい画面では横にスクロールして庭を動かす）
 const MAX_SCALE = 1.3;
 
@@ -54,6 +64,9 @@ const state = {
   baseScale: 1,
   zoom: 1,
   tutorialOpen: false,
+  angerCount: 0, // このステージでおやじに水をかけた回数（怒り方の段階）
+  wiltCount: 0, // このステージで花に水が届かなかった回数
+  lastToggled: null, // 最後に触った蛇口（「キュッ！」を出す）
   progress: loadProgress(),
 };
 
@@ -63,9 +76,9 @@ const currentStage = () => COMBINATIONAL_STAGES[state.stageIndex];
 function loadProgress() {
   try {
     const saved = JSON.parse(localStorage.getItem(SAVE_KEY));
-    return saved?.stages ? saved : { stages: {} };
+    return saved?.stages ? { oyaji: [], settings: {}, ...saved } : { stages: {}, oyaji: [], settings: {} };
   } catch {
-    return { stages: {} };
+    return { stages: {}, oyaji: [], settings: {} };
   }
 }
 
@@ -82,12 +95,19 @@ function stageProgress(no) {
   return state.progress.stages[no];
 }
 
+// 画面の揺れと点滅を弱める（端末の「動きを減らす」設定のときは、初めから弱める）。
+const calm = () => REDUCED_MOTION || Boolean(state.progress.settings.calm);
+
 // ---------- 画面の切り替え・拡大 ----------
 
 function showScreen(name) {
   $('#game').hidden = name !== 'game';
+  $('header').hidden = name !== 'game';
   $('#stage-select').hidden = name !== 'select';
-  if (name === 'select') renderStageList();
+  if (name === 'select') {
+    renderStageList();
+    renderZukan();
+  }
 }
 
 function setScale(scale) {
@@ -141,6 +161,9 @@ function openStage(index) {
   state.rowMarks = null;
   stopReveal();
   state.hintLevel = 0;
+  state.angerCount = 0;
+  state.wiltCount = 0;
+  state.lastToggled = null;
   // 初めてのステージは、チュートリアルを開いておく
   state.tutorialOpen = Boolean(TUTORIALS[stage.no]) && !stageProgress(stage.no).tutorialSeen;
   showScreen('game');
@@ -181,6 +204,7 @@ function redo() {
 function toggleFaucet(name) {
   if (state.judging) return;
   state.faucets = { ...state.faucets, [name]: !state.faucets[name] };
+  state.lastToggled = state.faucets[name] ? name : null;
   state.run = null;
   state.rowMarks = null;
   playReveal(PLAY_STEP_MS); // 水が仕掛けを1つずつ通る様子を見せる
@@ -264,6 +288,7 @@ async function playReveal(stepMs) {
 }
 
 // 準備完了（実行）：蛇口の開け方を1つずつ試し、水の流れをたどって出口に ○× を付ける。
+// 花に続けて水をやれると花が育ち、失敗するとおやじが怒る（これが一番の見せ場）。
 async function judge() {
   if (state.judging) return;
   const stage = currentStage();
@@ -272,7 +297,8 @@ async function judge() {
   state.skip = false;
   state.pending = null;
   state.selectedWire = null;
-  state.run = { rows, index: 0, results: [], failure: null };
+  state.lastToggled = null;
+  state.run = { rows, index: 0, results: [], failure: null, streak: 0, host: null };
   for (let i = 0; i < rows.length; i++) {
     state.run.index = i;
     state.faucets = rows[i];
@@ -280,16 +306,84 @@ async function judge() {
     await playReveal(JUDGE_STEP_MS);
     const marks = rowMarks(stage, state.board, rows[i]);
     const ok = Boolean(marks) && Object.values(marks).every(Boolean);
+    const expected = Object.fromEntries(
+      Object.keys(stage.outputs).map((name) => [name, stage.outputs[name](rows[i])]),
+    );
     state.rowMarks = marks;
     state.run.results.push(ok);
-    if (!ok) state.run.failure = failureMessage(stage, rows[i], marks);
+    if (ok && Object.values(expected).some(Boolean)) state.run.streak += 1;
+    if (!ok) {
+      const kind = failureKind(expected, marks);
+      state.run.failure = failureMessage(stage, rows[i], marks);
+      state.run.kind = kind;
+      if (kind === 'oyaji') {
+        state.angerCount += 1;
+        state.run.host = hostLine(kind, state.angerCount);
+        render();
+        await showOyaji(angerFor(state.angerCount));
+      } else {
+        if (kind === 'flower') state.wiltCount += 1;
+        state.run.wilt = kind === 'flower' ? wiltFor(state.wiltCount) : null;
+        state.run.host = hostLine(kind, state.wiltCount);
+      }
+    }
     render();
+    if (ok) {
+      const growth = growthFor(state.run.streak);
+      if (growth && Object.values(expected).some(Boolean)) popText(growth.level >= 4 ? 'ひまわりの森！！' : 'ポン！', 'grow');
+    }
     await pause(state.skip || REDUCED_MOTION ? 0 : 700);
     if (!ok) break;
   }
   state.judging = false;
   render();
   if (!state.run.failure) finishStage();
+}
+
+// おやじが怒る演出。画面いっぱいに出し、時間がたつかタップで閉じる。
+function showOyaji(anger) {
+  const seen = state.progress.oyaji;
+  const isNew = !seen.includes(anger.id);
+  if (isNew) seen.push(anger.id);
+  saveProgress();
+  const show = $('#oyaji-show');
+  const big = anger.id === 'clone'
+    ? Array.from({ length: 5 }, () => `<div class="clone-one">${oyajiIcon(anger.mood)}</div>`).join('')
+    : oyajiIcon(anger.mood);
+  const star = anger.id === 'rocket' ? `<div class="star-after">${starIcon()}</div>` : '';
+  show.className = `${anger.id} ${calm() ? 'calm' : ''}`;
+  show.innerHTML = `<div class="burst"></div>
+    <div class="big-oyaji">${big}</div>${star}
+    <p class="shout">${anger.shout}</p>
+    <p class="caption">${isNew ? '【おやじ図鑑に登録】' : ''}${anger.title}</p>
+    <p class="skip">タップで つぎへ</p>`;
+  show.hidden = false;
+  if (!calm() && ['giant', 'rocket', 'daibutsu', 'clone'].includes(anger.id)) {
+    document.body.classList.remove('shake');
+    void document.body.offsetWidth; // 揺れのアニメーションを最初から
+    document.body.classList.add('shake');
+  }
+  return new Promise((resolve) => {
+    const close = () => {
+      clearTimeout(timer);
+      show.removeEventListener('pointerdown', close);
+      show.hidden = true;
+      document.body.classList.remove('shake');
+      resolve();
+    };
+    const timer = setTimeout(close, REDUCED_MOTION ? 1500 : OYAJI_SHOW_MS);
+    show.addEventListener('pointerdown', close);
+  });
+}
+
+// 庭の上に、大きな書き文字（「ポン！」など）を出す。
+function popText(text, kind) {
+  if (REDUCED_MOTION) return;
+  const el = document.createElement('div');
+  el.className = `pop-text ${kind}`;
+  el.textContent = text;
+  wrap.append(el);
+  setTimeout(() => el.remove(), 1200);
 }
 
 function finishStage() {
@@ -307,8 +401,21 @@ function finishStage() {
 function showClear(stars) {
   const hasNext = state.stageIndex < COMBINATIONAL_STAGES.length - 1;
   $('#clear-stars').textContent = '★'.repeat(stars) + '☆'.repeat(3 - stars);
+  $('#clear-cast').innerHTML = `${flowerIcon('bloom')}${flowerIcon('sun')}${oyajiIcon('clap')}${flowerIcon('sun')}${flowerIcon('bloom')}`;
   $('#next-stage').hidden = !hasNext;
-  $('#clear-dialog').hidden = false;
+  const dialog = $('#clear-dialog');
+  dialog.classList.toggle('fireworks', stars === 3);
+  // 紙吹雪
+  const colors = ['#ff5a5f', '#ffc93c', '#1e9bff', '#4cbb5a', '#ff8fb1', '#a565c9'];
+  $('#confetti').innerHTML = REDUCED_MOTION
+    ? ''
+    : Array.from({ length: 60 }, (_, i) => {
+        const left = Math.round(Math.random() * 100);
+        const delay = (Math.random() * 1.2).toFixed(2);
+        const spin = Math.round(Math.random() * 720 - 360);
+        return `<i style="left:${left}%;background:${colors[i % colors.length]};animation-delay:${delay}s;--spin:${spin}deg"></i>`;
+      }).join('');
+  dialog.hidden = false;
 }
 
 // ---------- 描画 ----------
@@ -367,8 +474,11 @@ function renderGarden(stage, live) {
   stage.inputs.forEach((name) => {
     const open = Boolean(state.faucets[name]);
     const top = rowTop(FAUCETS.indexOf(name));
+    // 開けた直後は「キュッ！」と言って、水圧で少し暴れる
+    const kyu = state.lastToggled === name && state.reveal !== null;
+    const say = kyu ? '<span class="say pop">キュッ！</span>' : '';
     boxes.push(
-      `<div class="box faucet ${open ? 'open' : ''}" data-faucet="${name}" style="left:${LAYOUT.faucetX}px;top:${top}px">${faucetIcon(open)}<span class="label"><span class="name">蛇口${name}</span><span class="sub">${open ? '開いている' : '閉じている'}</span></span></div>`,
+      `<div class="box faucet ${open ? 'open' : ''} ${kyu ? 'kyu' : ''}" data-faucet="${name}" style="left:${LAYOUT.faucetX}px;top:${top}px">${faucetIcon(open)}<span class="label"><span class="name">蛇口${name}</span><span class="sub">${open ? '開いている' : '閉じている'}</span></span>${say}</div>`,
     );
     pins.push(pinHtml(stage, { faucet: name }, open));
   });
@@ -378,15 +488,41 @@ function renderGarden(stage, live) {
     const expected = stage.outputs[name](state.faucets);
     const actual = reached(half) ? live?.outputs[name] : undefined;
     const status = actual === undefined ? 'waiting' : actual === expected ? 'ok' : 'ng';
-    // 絵は水が届いた結果（花は咲く、おやじは怒る）。下の文は、本当の目標。
-    const picture = expected ? flowerIcon(Boolean(actual)) : oyajiIcon(Boolean(actual));
+    // 絵は水が届いた結果（花は咲いて育つ、おやじは怒る）。下の文は、本当の目標。
+    const run = state.run;
+    const growth = actual && expected && run ? growthFor(run.streak) : null;
+    const wilt = run?.wilt && status === 'ng' && !state.judging ? run.wilt : null;
+    let mood;
+    if (expected) {
+      if (actual === undefined) mood = 'bud';
+      else if (actual) mood = growth && growth.level >= 3 ? 'sun' : 'bloom';
+      else mood = wilt?.level === 3 ? 'mummy' : 'wilt';
+    } else {
+      mood = actual ? 'angry' : 'sleep';
+    }
+    const picture = expected ? flowerIcon(mood) : oyajiIcon(mood);
     const goal = expected ? '水をもらう' : '水をかけない';
+    let say = '';
+    if (status !== 'waiting' && arriving(half)) {
+      if (expected && actual) say = '<span class="say pop">ポン！</span>';
+      if (!expected && actual) say = '<span class="say pop mad">こらっ！</span>';
+    }
+    if (wilt) say = `<span class="say pop sad">${wilt.shout}</span>`;
+    const grow = growth ? `--grow:${growth.scale}` : '';
     const mark = state.rowMarks
       ? `<span class="mark ${state.rowMarks[name] ? 'ok' : 'ng'}">${state.rowMarks[name] ? '○' : '×'}</span>`
       : '';
-    const classes = ['box', 'outlet', status, actual ? 'wet' : '', arriving(half) ? 'arrive' : ''];
+    const classes = [
+      'box',
+      'outlet',
+      status,
+      actual ? 'wet' : '',
+      arriving(half) ? 'arrive' : '',
+      growth ? 'grown' : '',
+      wilt ? `wilt-${wilt.level}` : '',
+    ];
     boxes.push(
-      `<div class="${classes.join(' ')}" data-outlet="${name}" style="left:${LAYOUT.outletX}px;top:${rowTop(index)}px">${picture}<span class="label"><span class="name">${OUTLET_NAMES[name]}</span><span class="sub">${goal}</span></span>${mark}</div>`,
+      `<div class="${classes.join(' ')}" data-outlet="${name}" style="left:${LAYOUT.outletX}px;top:${rowTop(index)}px;${grow}">${picture}<span class="label"><span class="name">${OUTLET_NAMES[name]}</span><span class="sub">${goal}</span></span>${mark}${say}</div>`,
     );
     pins.push(pinHtml(stage, { outlet: name }, false));
   });
@@ -395,8 +531,20 @@ function renderGarden(stage, live) {
     const half = levels ? 2 * levels.parts[part.id] : 0;
     const wet = reached(half) && Boolean(live?.gates[part.id]);
     const classes = ['box', 'part', wet ? 'on' : '', arriving(half) ? 'working' : ''];
+    // 水を受けた仕掛けは、ひとこと言う（水をたどって見せている間だけ）
+    let say = '';
+    if (levels && reached(half) && live) {
+      const inputs = pinsOf(part.type).map((pin) => {
+        const index = state.board.wires.findIndex((wire) => sameEnd(wire.to, { part: part.id, pin }));
+        return index >= 0 && Boolean(live.wires[index]);
+      });
+      const line = gateLine(part.type, inputs);
+      const boom = part.type === 'XOR' && inputs.every(Boolean);
+      if (line) say = `<span class="say ${arriving(half) ? 'pop' : ''} ${boom ? 'boom' : ''}">${line}</span>`;
+      if (boom && arriving(half)) classes.push('collide');
+    }
     boxes.push(
-      `<div class="${classes.join(' ')}" data-part="${part.id}" style="left:${part.x}px;top:${part.y}px">${gateIcon(part.type)}<span class="label"><span class="name">${part.type}</span><span class="sub">${PART_NAMES[part.type]}</span></span></div>`,
+      `<div class="${classes.join(' ')}" data-part="${part.id}" style="left:${part.x}px;top:${part.y}px">${gateIcon(part.type)}<span class="label"><span class="name">${part.type}</span><span class="sub">${PART_NAMES[part.type]}</span></span>${say}</div>`,
     );
     pinsOf(part.type).forEach((pin) => pins.push(pinHtml(stage, { part: part.id, pin }, false)));
     pins.push(pinHtml(stage, { part: part.id, pin: 'out' }, wet));
@@ -423,6 +571,8 @@ function renderGarden(stage, live) {
     })
     .join('');
 
+  // 花に続けて水をやれると、庭がひまわりの森になる
+  wrap.classList.toggle('forest', (growthFor(state.run?.streak ?? 0)?.level ?? 0) >= 4);
   garden.innerHTML = `<svg id="wires" width="${LAYOUT.width}" height="${LAYOUT.height}" viewBox="0 0 ${LAYOUT.width} ${LAYOUT.height}">${wires}</svg>${boxes.join('')}${pins.join('')}`;
 }
 
@@ -447,7 +597,9 @@ function renderRunStatus(stage) {
   let message = 'すべての開け方で成功！';
   if (run.failure) message = run.failure;
   else if (state.judging) message = `ためしている開け方　${faucets}`;
-  box.innerHTML = `<div class="dots">${dots}</div><p class="${run.failure ? 'ng' : ''}">${message}</p>`;
+  // 失敗したら、司会のじょうろがツッコミを入れてから、どの開け方で違ったかを言う
+  const host = run.host && !state.judging ? `<b>${run.host}</b><br>` : '';
+  box.innerHTML = `<div class="dots">${dots}</div><div class="host-row">${hostIcon()}<p class="bubble ${run.failure ? 'ng' : ''}">${host}${message}</p></div>`;
 }
 
 function renderTray(stage) {
@@ -506,6 +658,18 @@ function renderStageList() {
     const status = locked ? '（まだ開かない）' : '★'.repeat(stars) + '☆'.repeat(3 - stars);
     return `<li><button data-stage="${i}" ${locked ? 'disabled' : ''}>${label}　${status}</button></li>`;
   }).join('');
+}
+
+// おやじ図鑑。見た怒り方だけ絵が出る。
+function renderZukan() {
+  const seen = state.progress.oyaji;
+  $('#zukan-count').textContent = `${seen.length} / ${ALL_ANGERS.length}`;
+  $('#zukan-list').innerHTML = ALL_ANGERS.map((anger) => {
+    const found = seen.includes(anger.id);
+    return `<li class="${found ? '' : 'unknown'}">${oyajiIcon(found ? anger.mood : 'sleep')}<span>${found ? anger.title : '？？？'}</span></li>`;
+  }).join('');
+  $('#calm').checked = calm();
+  $('#calm').disabled = REDUCED_MOTION;
 }
 
 // ---------- ドラッグ・タップ ----------
@@ -773,8 +937,13 @@ $('#tutorial-close').addEventListener('click', () => {
   render();
 });
 $('#menu').addEventListener('click', () => showScreen('select'));
+$('#calm').addEventListener('change', (event) => {
+  state.progress.settings.calm = event.target.checked;
+  saveProgress();
+});
 $('#back').addEventListener('click', () => {
   showScreen('game');
+  fitWidth();
   render();
 });
 $('#stage-list').addEventListener('click', (event) => {
@@ -793,5 +962,6 @@ window.addEventListener('resize', () => {
   if (!$('#game').hidden) fitWidth();
 });
 
+$('#logo-cast').innerHTML = `${flowerIcon('bloom')}${gateIcon('NOT')}${oyajiIcon('sleep')}${hostIcon()}${flowerIcon('sun')}`;
 showScreen('select');
 document.documentElement.dataset.ready = '1';

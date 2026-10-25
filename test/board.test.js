@@ -64,7 +64,7 @@ test('仕掛けを消すと、つながっていた水路も消える', () => {
 });
 
 test('仕掛け箱の残りの数は、置いた数を引いて出す', () => {
-  const s = stage(3);
+  const s = stage(9);
   const board = build([['AND', 300, 100]], []);
   assert.equal(remaining(createBoard(), s, 'AND'), 2);
   assert.equal(remaining(board, s, 'AND'), 1);
@@ -87,8 +87,8 @@ test('つながっていない入口は水がないものとして扱う', () =>
   assert.deepEqual(result.row, { A: true, B: true });
 });
 
-test('ステージ8の半加算器は2つの出口を両方見る', () => {
-  const s = stage(8);
+test('ステージ10の半加算器は2つの出口を両方見る', () => {
+  const s = stage(10);
   const board = build(
     [['XOR', 300, 100], ['AND', 300, 300]],
     [
