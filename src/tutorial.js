@@ -1,5 +1,5 @@
 // ステージごとのチュートリアル。手順は上から順に、できたら印が付く。
-// done には、今の盤面の様子（faucets、board、cleared）を渡す。
+// done には、今の盤面の様子（board、cleared、timesSeen：見た予定表の時間）を渡す。
 export const TUTORIALS = {
   1: [
     {
@@ -13,7 +13,7 @@ export const TUTORIALS = {
   ],
   2: [
     {
-      text: '出口は全部つなぐのがルール。おやじにも水路をつなごう。でも、水の来る水路をつなぐと…？',
+      text: '花だんは全部つなぐのがルール。おやじの寝ている花だんにも水路をつなごう。でも、水の来る水路をつなぐと…？',
       done: (s) => s.board.wires.length >= 2,
     },
     {
@@ -35,17 +35,17 @@ export const TUTORIALS = {
       done: (s) => s.cleared,
     },
   ],
-  7: [
+  5: [
     {
-      text: '黄色い取っ手の蛇口Bは、タップで開け閉めできるよ。回してみよう。',
-      done: (s) => s.faucets.B,
+      text: '上の予定表を見よう。朝と夜の2回、水を流すよ。予定表の「夜」をタップして、夜の庭も見てみよう。',
+      done: (s) => s.timesSeen.length >= 2,
     },
     {
-      text: 'カタブツと天野君を置いてつなぎ、どう開ければ注文どおりになるか考えよう。',
-      done: (s) => s.board.parts.length >= 2,
+      text: '朝と夜で、蛇口とおやじのいる花だんが入れかわる。水路は1つだけ。どちらの時間もうまくいくようにつなごう。',
+      done: (s) => s.board.wires.length >= 3,
     },
     {
-      text: '「準備完了（実行）」は、今の蛇口の開け方で確かめるよ。',
+      text: '「準備完了（実行）」で、朝 → 夜の順に水を流して確かめよう。',
       done: (s) => s.cleared,
     },
   ],
