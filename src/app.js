@@ -37,11 +37,21 @@ import {
 
 // ステージの中身を作り直したので、保存の場所も新しくした（前の版の進み具合は使わない）。
 const SAVE_KEY = 'enjoy_logic.progress.v2';
+// 時間はすべて「ふつう」の速さのときの長さ。実際には、選んだ速さの倍率をかける（speedMs）。
 const JUDGE_STEP_MS = 300; // 実行のとき、水が1段進む時間
 const FLOW_STEP_MS = 150; // 手で回せる蛇口を回したとき、水が1段進む時間
 const KIND_NAMES = { flower: '花', oyaji: 'おやじ' };
 const REDUCED_MOTION = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 const OYAJI_SHOW_MS = 2600; // おやじが怒る演出の長さ（タップで飛ばせる）
+// アニメーションの速さ。初めは「ゆっくり」にして、慣れたら上げられる。scale は時間の倍率。
+const SPEEDS = [
+  { id: 'slow', label: 'ゆっくり', scale: 1.8 },
+  { id: 'normal', label: 'ふつう', scale: 1 },
+  { id: 'fast', label: 'はやい', scale: 0.5 },
+];
+const DEFAULT_SPEED = 'slow';
+// 開発中は、クリアしていないステージも全部選べるようにしておく（公開するときは false にする）。
+const UNLOCK_ALL_STAGES = true;
 const MIN_SCALE = 0.8; // 文字が読める最小の大きさ（小さい画面では横にスクロールして庭を動かす）
 const MAX_SCALE = 1.3;
 
@@ -102,6 +112,17 @@ function stageProgress(no) {
 
 // 画面の揺れと点滅を弱める（端末の「動きを減らす」設定のときは、初めから弱める）。
 const calm = () => REDUCED_MOTION || Boolean(state.progress.settings.calm);
+
+const currentSpeed = () => SPEEDS.find((speed) => speed.id === state.progress.settings.speed) ?? SPEEDS.find((speed) => speed.id === DEFAULT_SPEED);
+const speedMs = (ms) => Math.round(ms * currentSpeed().scale);
+
+// 速さを1段ずつ切り替える（ゆっくり → ふつう → はやい → ゆっくり …）。
+function cycleSpeed() {
+  const index = SPEEDS.indexOf(currentSpeed());
+  state.progress.settings.speed = SPEEDS[(index + 1) % SPEEDS.length].id;
+  saveProgress();
+  render();
+}
 
 // ---------- 画面の切り替え・拡大 ----------
 
@@ -291,7 +312,7 @@ function stopReveal() {
 async function playReveal(stepMs) {
   const token = ++state.revealToken;
   const levels = flowLevels(state.board, currentStage());
-  const ms = REDUCED_MOTION ? 0 : stepMs;
+  const ms = REDUCED_MOTION ? 0 : speedMs(stepMs);
   garden.style.setProperty('--step', `${ms}ms`);
   if (levels && ms > 0) {
     const last = 2 * Math.max(1, ...Object.values(levels.parts), ...Object.values(levels.outlets));
@@ -336,7 +357,7 @@ async function judge() {
     state.run = { kind: 'ok', host: 'やったね！', message: '花には水が届いて、おやじはぐっすり昼寝中。', growth: 4 };
     render();
     if (Object.values(expected).some(Boolean)) popText('ポン！', 'grow');
-    await pause(state.skip || REDUCED_MOTION ? 0 : 1000);
+    await pause(state.skip || REDUCED_MOTION ? 0 : speedMs(1000));
   } else {
     const kind = failureKind(expected, actual);
     state.misses += 1;
@@ -355,7 +376,7 @@ async function judge() {
   state.judging = false;
   render();
   if (ok) {
-    await pause(REDUCED_MOTION ? 0 : 500);
+    await pause(REDUCED_MOTION ? 0 : speedMs(500));
     finishStage();
   }
 }
@@ -378,6 +399,8 @@ function showOyaji(anger) {
     <p class="caption">${isNew ? '【おやじ図鑑に登録】' : ''}${anger.title}</p>
     <p class="skip">タップで つぎへ</p>`;
   show.hidden = false;
+  // おやじの動き（CSS のアニメーション）も、選んだ速さに合わせる
+  for (const animation of show.getAnimations({ subtree: true })) animation.playbackRate = 1 / currentSpeed().scale;
   if (!calm() && ['giant', 'rocket', 'daibutsu', 'clone'].includes(anger.id)) {
     document.body.classList.remove('shake');
     void document.body.offsetWidth; // 揺れのアニメーションを最初から
@@ -391,7 +414,7 @@ function showOyaji(anger) {
       document.body.classList.remove('shake');
       resolve();
     };
-    const timer = setTimeout(close, REDUCED_MOTION ? 1500 : OYAJI_SHOW_MS);
+    const timer = setTimeout(close, REDUCED_MOTION ? 1500 : speedMs(OYAJI_SHOW_MS));
     show.addEventListener('pointerdown', close);
   });
 }
@@ -402,8 +425,9 @@ function popText(text, kind) {
   const el = document.createElement('div');
   el.className = `pop-text ${kind}`;
   el.textContent = text;
+  el.style.animationDuration = `${speedMs(1200)}ms`;
   wrap.append(el);
-  setTimeout(() => el.remove(), 1200);
+  setTimeout(() => el.remove(), speedMs(1200));
 }
 
 function finishStage() {
@@ -638,6 +662,7 @@ function renderToolbar() {
   $('#redo').disabled = state.judging || state.redo.length === 0;
   $('#judge').disabled = state.judging;
   $('#delete-wire').hidden = state.selectedWire === null;
+  $('#speed').textContent = `速さ：${currentSpeed().label}`;
 }
 
 function describeRef(stage, ref) {
@@ -672,7 +697,7 @@ function renderHint(stage) {
 function renderStageList() {
   $('#stage-list').innerHTML = COMBINATIONAL_STAGES.map((stage, i) => {
     const progress = state.progress.stages[stage.no];
-    const locked = i > 0 && !state.progress.stages[COMBINATIONAL_STAGES[i - 1].no]?.cleared;
+    const locked = !UNLOCK_ALL_STAGES && i > 0 && !state.progress.stages[COMBINATIONAL_STAGES[i - 1].no]?.cleared;
     const stars = progress?.stars ?? 0;
     const label = `${stage.no}. ${stage.title}`;
     const status = locked ? '（まだ開かない）' : '★'.repeat(stars) + '☆'.repeat(3 - stars);
@@ -997,6 +1022,7 @@ tray.addEventListener('pointerdown', (event) => {
 $('#undo').addEventListener('click', undo);
 $('#redo').addEventListener('click', redo);
 $('#judge').addEventListener('click', judge);
+$('#speed').addEventListener('click', cycleSpeed);
 $('#fit').addEventListener('click', () => {
   fitWidth(0);
   render();
