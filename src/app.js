@@ -31,11 +31,14 @@ import {
   removePart,
   rowTop,
   ruleProblems,
+  sanitizeBoard,
   sameEnd,
 } from './board.js';
 
-const SAVE_KEY = 'enjoy_logic.progress.v1';
+// ステージの中身を作り直したので、保存の場所も新しくした（前の版の進み具合は使わない）。
+const SAVE_KEY = 'enjoy_logic.progress.v2';
 const JUDGE_STEP_MS = 300; // 実行のとき、水が1段進む時間
+const FLOW_STEP_MS = 150; // 手で回せる蛇口を回したとき、水が1段進む時間
 const KIND_NAMES = { flower: '花', oyaji: 'おやじ' };
 const REDUCED_MOTION = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 const OYAJI_SHOW_MS = 2600; // おやじが怒る演出の長さ（タップで飛ばせる）
@@ -153,8 +156,8 @@ function zoomAt(zoom, clientX, clientY) {
 function openStage(index) {
   state.stageIndex = index;
   const stage = currentStage();
-  state.board = stageProgress(stage.no).board ?? createBoard();
-  state.faucets = stage.faucets; // 蛇口の開け閉めはステージで決まっている
+  state.board = sanitizeBoard(stageProgress(stage.no).board, stage);
+  state.faucets = { ...stage.faucets }; // 手で回せる蛇口だけ、プレイヤーが変えられる
   state.undo = [];
   state.redo = [];
   state.pending = null;
@@ -205,6 +208,15 @@ function redo() {
   if (state.judging || state.redo.length === 0) return;
   state.undo.push(state.board);
   setBoard(state.redo.pop());
+}
+
+// 手で回せる蛇口を開け閉めする。水が仕掛けを1つずつ通る様子を見せる。
+function toggleFaucet(name) {
+  if (state.judging) return;
+  state.faucets = { ...state.faucets, [name]: !state.faucets[name] };
+  state.run = null;
+  state.marks = null;
+  playReveal(FLOW_STEP_MS);
 }
 
 // 2つの端をつなぐ。向きは出口→入口に自動で揃える。
@@ -320,15 +332,11 @@ async function judge() {
     ? Object.fromEntries(Object.keys(expected).map((name) => [name, expected[name] === actual[name]]))
     : null;
   if (ok) {
-    state.run = { kind: 'ok', host: 'やったね！', message: '花には水が届いて、おやじはぐっすり昼寝中。', growth: 0 };
-    // 花が段階を追って大きくなり、最後はひまわりの森になる
-    const hasFlower = Object.values(expected).some(Boolean);
-    for (let level = 1; hasFlower && level <= 4; level++) {
-      state.run.growth = level;
-      render();
-      popText(level === 4 ? 'ひまわりの森！！' : 'ポン！'.repeat(level), 'grow');
-      await pause(state.skip || REDUCED_MOTION ? 0 : 550);
-    }
+    // 花は一気に大きく育ち、庭がひまわりの森になる
+    state.run = { kind: 'ok', host: 'やったね！', message: '花には水が届いて、おやじはぐっすり昼寝中。', growth: 4 };
+    render();
+    if (Object.values(expected).some(Boolean)) popText('ポン！', 'grow');
+    await pause(state.skip || REDUCED_MOTION ? 0 : 1000);
   } else {
     const kind = failureKind(expected, actual);
     state.misses += 1;
@@ -452,6 +460,7 @@ function renderTutorial(stage) {
   $('#tutorial').hidden = !state.tutorialOpen || steps.length === 0;
   if (state.tutorialOpen === false || steps.length === 0) return;
   const snapshot = {
+    faucets: state.faucets,
     board: state.board,
     cleared: Boolean(stageProgress(stage.no).cleared),
   };
@@ -490,8 +499,11 @@ function renderGarden(stage, live) {
   stage.inputs.forEach((name) => {
     const open = Boolean(state.faucets[name]);
     const top = rowTop(FAUCETS.indexOf(name));
+    // 手で回せる蛇口は、黄色い取っ手で見分ける
+    const switchable = stage.switchable.includes(name);
+    const badge = switchable ? '<span class="badge">タップで回せる</span>' : '';
     boxes.push(
-      `<div class="box faucet ${open ? 'open' : ''}" data-faucet="${name}" style="left:${LAYOUT.faucetX}px;top:${top}px">${faucetIcon(open)}<span class="label"><span class="name">蛇口${name}</span><span class="sub">${open ? '開いている' : '閉じている'}</span></span></div>`,
+      `<div class="box faucet ${open ? 'open' : ''} ${switchable ? 'switchable' : 'fixed'}" data-faucet="${name}" style="left:${LAYOUT.faucetX}px;top:${top}px">${faucetIcon(open, switchable)}<span class="label"><span class="name">蛇口${name}</span><span class="sub">${open ? '開いている' : '閉じている'}</span></span>${badge}</div>`,
     );
     pins.push(pinHtml(stage, { faucet: name }, open));
   });
@@ -644,6 +656,9 @@ function renderHint(stage) {
     hint.hidden = true;
     return;
   }
+  const faucets = Object.entries(stage.solution.faucets ?? {}).map(
+    ([name, open]) => `蛇口${name}を${open ? '開ける' : '閉める'}`,
+  );
   const outlets = Object.entries(stage.solution.outputs).map(
     ([name, ref]) => `${outletLabel(stage, name)} ← ${describeRef(stage, ref)}`,
   );
@@ -651,7 +666,7 @@ function renderHint(stage) {
     (gate) => `${PART_NAMES[gate.type]}(${gate.id}) ← ${gate.inputs.map((ref) => describeRef(stage, ref)).join('、')}`,
   );
   hint.hidden = false;
-  hint.textContent = (state.hintLevel === 1 ? outlets : [...outlets, ...gates]).join('\n');
+  hint.textContent = (state.hintLevel === 1 ? [...faucets, ...outlets] : [...faucets, ...outlets, ...gates]).join('\n');
 }
 
 function renderStageList() {
@@ -669,6 +684,7 @@ function renderStageList() {
 
 function characterIcon(key) {
   if (key === 'faucet') return faucetIcon(true);
+  if (key === 'switch') return faucetIcon(true, true);
   if (key === 'flower') return flowerIcon('bloom');
   if (key === 'oyaji') return oyajiIcon('sleep');
   return gateIcon(key);
@@ -832,6 +848,10 @@ function onEnd(event, drag) {
     else commit(movePart(state.board, drag.id, drag.pos.x, drag.pos.y));
     return;
   }
+  if (drag.kind === 'faucet') {
+    if (!drag.moved) toggleFaucet(drag.name);
+    return;
+  }
   if (drag.kind === 'card') {
     if (!drag.moved) showCard(drag.key);
     return;
@@ -937,7 +957,8 @@ wrap.addEventListener('pointerdown', (event) => {
     const part = findPart(state.board, partEl.dataset.part);
     drag = { kind: 'part', id: part.id, origin: { x: part.x, y: part.y }, el: partEl };
   } else if (faucetEl) {
-    drag = { kind: 'card', key: 'faucet' };
+    const name = faucetEl.dataset.faucet;
+    drag = currentStage().switchable.includes(name) ? { kind: 'faucet', name } : { kind: 'card', key: 'faucet' };
   } else if (outletEl) {
     drag = { kind: 'card', key: currentStage().outputs[outletEl.dataset.outlet] };
   } else if (hitEl) {

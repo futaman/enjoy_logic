@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { COMBINATIONAL_STAGES } from '../src/stages.js';
 import { CHARACTERS } from '../src/characters.js';
-import { evaluate } from '../src/logic.js';
+import { checkCircuit, evaluate } from '../src/logic.js';
 
 const refsOf = (solution) => [
   ...solution.gates.flatMap((gate) => gate.inputs),
@@ -44,4 +44,25 @@ test('紹介カードの表は、仕掛けの本当の動きと同じ', () => {
       assert.equal(evaluate(circuit, values).out, Boolean(output), `${type} ${inputs}`);
     }
   }
+});
+
+test('手で回せる蛇口は、ステージの蛇口の中から選び、参考解は回さないと正解にならない', () => {
+  const switching = COMBINATIONAL_STAGES.filter((stage) => stage.switchable.length > 0);
+  assert.ok(switching.length >= 2);
+  for (const stage of switching) {
+    for (const name of stage.switchable) assert.ok(name in stage.faucets);
+    for (const name of Object.keys(stage.solution.faucets)) assert.ok(stage.switchable.includes(name));
+    assert.equal(checkCircuit(stage.solution, stage).ok, false, `ステージ${stage.no}`);
+  }
+});
+
+test('固定の蛇口だけのステージは、参考解が蛇口を回さない', () => {
+  for (const stage of COMBINATIONAL_STAGES.filter((s) => s.switchable.length === 0)) {
+    assert.equal(stage.solution.faucets, undefined, `ステージ${stage.no}`);
+  }
+});
+
+test('手で回せる蛇口は、初めて出てくるステージで紹介される', () => {
+  const first = COMBINATIONAL_STAGES.find((stage) => stage.switchable.length > 0);
+  assert.ok(first.intro.includes('switch'));
 });

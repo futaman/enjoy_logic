@@ -1,5 +1,5 @@
 // ステージごとのチュートリアル。手順は上から順に、できたら印が付く。
-// done には、今の盤面の様子（board、cleared）を渡す。
+// done には、今の盤面の様子（faucets、board、cleared）を渡す。
 export const TUTORIALS = {
   1: [
     {
@@ -32,6 +32,20 @@ export const TUTORIALS = {
     },
     {
       text: '「準備完了（実行）」で確かめよう。',
+      done: (s) => s.cleared,
+    },
+  ],
+  7: [
+    {
+      text: '黄色い取っ手の蛇口Bは、タップで開け閉めできるよ。回してみよう。',
+      done: (s) => s.faucets.B,
+    },
+    {
+      text: 'カタブツと天野君を置いてつなぎ、どう開ければ注文どおりになるか考えよう。',
+      done: (s) => s.board.parts.length >= 2,
+    },
+    {
+      text: '「準備完了（実行）」は、今の蛇口の開け方で確かめるよ。',
       done: (s) => s.cleared,
     },
   ],

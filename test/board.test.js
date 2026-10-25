@@ -10,6 +10,7 @@ import {
   remaining,
   removePart,
   ruleProblems,
+  sanitizeBoard,
 } from '../src/board.js';
 import { COMBINATIONAL_STAGES } from '../src/stages.js';
 
@@ -65,7 +66,7 @@ test('仕掛けを消すと、つながっていた水路も消える', () => {
 });
 
 test('仕掛け箱の残りの数は、置いた数を引いて出す', () => {
-  const s = stage(12);
+  const s = stage(14);
   const board = build([['NOT', 300, 100]], []);
   assert.equal(remaining(createBoard(), s, 'NOT'), 2);
   assert.equal(remaining(board, s, 'NOT'), 1);
@@ -106,7 +107,7 @@ test('つながっていない入口は水がないものとして扱う', () =>
 });
 
 test('ルール：出口は全部つなぎ、仕掛け箱の仕掛けは全部使って、丸を全部つなぐ', () => {
-  const s = stage(8); // 仕掛け箱にイエスマンと多様性好き
+  const s = stage(9); // 仕掛け箱にイエスマンと多様性好き
   assert.deepEqual(ruleProblems(createBoard(), s), [
     { kind: 'outlet', outlets: ['f1', 'o1'] },
     { kind: 'tray', types: ['OR', 'XOR'] },
@@ -149,7 +150,7 @@ test('水の流れ：開いた蛇口につながった水路が1になる', () =
 });
 
 test('水が届く順番：蛇口→仕掛け→出口の順に大きくなる', () => {
-  const s = stage(10);
+  const s = stage(12);
   const board = build(
     [['NOT', 300, 300], ['AND', 400, 100]],
     [
@@ -173,4 +174,46 @@ test('水が届く順番：ぐるぐる回る水路があると null', () => {
     [[outPin('p2'), pin('p1', 'in0')], [outPin('p1'), pin('p2', 'in0')]],
   );
   assert.equal(flowLevels(board, s), null);
+});
+
+test('手で回せる蛇口のステージは、回したあとの開け方で判定する', () => {
+  const s = stage(7); // 蛇口B を開ける
+  const board = build(
+    [['AND', 300, 100], ['NOT', 300, 300]],
+    [
+      [A, pin('p1', 'in0')],
+      [B, pin('p1', 'in1')],
+      [B, pin('p2', 'in0')],
+      [outPin('p1'), out('f1')],
+      [outPin('p2'), out('o1')],
+    ],
+  );
+  assert.equal(checkBoard(board, s).ok, false);
+  assert.deepEqual(checkBoard(board, s, { ...s.faucets, B: true }), { ok: true });
+});
+
+test('古い盤面を読み込んでも、ステージにない蛇口・出口・仕掛けへの水路は消える', () => {
+  const s = stage(3); // 蛇口A、花 f1、天野君1つ
+  const old = {
+    parts: [
+      { id: 'p1', type: 'AND', x: 300, y: 100 },
+      { id: 'p2', type: 'NOT', x: 300, y: 200 },
+      { id: 'p3', type: 'NOT', x: 300, y: 300 },
+    ],
+    wires: [
+      { from: A, to: pin('p1', 'in0') },
+      { from: B, to: pin('p2', 'in0') },
+      { from: A, to: pin('p2', 'in0') },
+      { from: outPin('p2'), to: out('out') },
+      { from: outPin('p2'), to: out('f1') },
+    ],
+  };
+  assert.deepEqual(sanitizeBoard(old, s), {
+    parts: [{ id: 'p2', type: 'NOT', x: 300, y: 200 }],
+    wires: [
+      { from: A, to: pin('p2', 'in0') },
+      { from: outPin('p2'), to: out('f1') },
+    ],
+  });
+  assert.deepEqual(sanitizeBoard(null, s), createBoard());
 });

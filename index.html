@@ -173,6 +173,23 @@
     .box .name { font-size: 14px; font-weight: 900; white-space: nowrap; }
     .box .sub { display: block; font-size: 11px; color: var(--muted); white-space: nowrap; }
     .faucet, .outlet { cursor: pointer; }
+    /* 手で回せる蛇口：黄色い取っ手が、ときどき「回して」と揺れる */
+    .faucet.switchable { border-color: #e0a100; background: #fff6d6; }
+    .faucet.switchable.open { background: #d6efff; }
+    .faucet .badge {
+      position: absolute;
+      left: 8px;
+      top: -13px;
+      padding: 0 8px;
+      border: 2px solid var(--ink);
+      border-radius: 999px;
+      background: #ffc93c;
+      font-size: 11px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .faucet.switchable .handle { animation: handle 2.4s ease-in-out infinite; transform-origin: 20px 7px; }
+    @keyframes handle { 0%, 80%, 100% { transform: rotate(0); } 85% { transform: rotate(-18deg); } 92% { transform: rotate(14deg); } }
     .faucet.open { background: #d6efff; }
     .faucet.kyu svg { animation: kyu 0.5s ease-out; }
     @keyframes kyu {

@@ -56,7 +56,8 @@ test('入口の数が合わない仕掛けは受け付けない', () => {
 
 for (const stage of COMBINATIONAL_STAGES) {
   test(`ステージ${stage.no}（${stage.title}）の参考解が正解になる`, () => {
-    assert.deepEqual(checkCircuit(stage.solution, stage), { ok: true });
+    const faucets = { ...stage.faucets, ...stage.solution.faucets };
+    assert.deepEqual(checkCircuit(stage.solution, stage, faucets), { ok: true });
   });
 
   test(`ステージ${stage.no}（${stage.title}）の参考解は、仕掛け箱の中身ちょうどで作れる`, () => {

@@ -8,15 +8,15 @@ const LINE = `stroke="${INK}" stroke-width="2.2" stroke-linejoin="round" stroke-
 const svg = (body, viewBox = '0 0 40 40', cls = '') =>
   `<svg viewBox="${viewBox}" aria-hidden="true" class="${cls}" overflow="visible">${body}</svg>`;
 
-// 蛇口。開いているときは水が勢いよく出る。
-export function faucetIcon(open) {
+// 蛇口。開いているときは水が勢いよく出る。手で回せる蛇口（switchable）は取っ手が黄色。
+export function faucetIcon(open, switchable = false) {
   const water = open
     ? `<path class="stream" d="M18 27 Q17 33 15 38 M22 27 Q23 33 25 38" stroke="${WATER}" stroke-width="3.5" fill="none" stroke-linecap="round"/>
        <circle class="drop" cx="20" cy="33" r="3" fill="${WATER}" ${LINE} stroke-width="1.2"/>`
     : '';
   return svg(`
     ${water}
-    <g class="handle"><rect x="11" y="2" width="18" height="6" rx="3" fill="#ff5a5f" ${LINE}/>
+    <g class="handle"><rect x="11" y="2" width="18" height="6" rx="3" fill="${switchable ? '#ffc93c' : '#ff5a5f'}" ${LINE}/>
     <rect x="18" y="7" width="4" height="5" fill="#c7ced6" ${LINE}/></g>
     <path d="M6 12 H28 Q34 12 34 18 V20 H26 V19 H6 Z" fill="#c7ced6" ${LINE}/>
     <rect x="15" y="18" width="10" height="9" rx="2" fill="#c7ced6" ${LINE}/>

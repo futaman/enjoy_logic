@@ -136,8 +136,27 @@ export function toCircuit(board, stage) {
 }
 
 // ステージの開け方で、出口ごとの答えと照らし合わせる。水路がぐるぐる回るときは例外になる。
-export function checkBoard(board, stage) {
-  return checkCircuit(toCircuit(board, stage), stage);
+export function checkBoard(board, stage, faucets = stage.faucets) {
+  return checkCircuit(toCircuit(board, stage), stage, faucets);
+}
+
+// 保存してあった盤面のうち、このステージにないもの（蛇口・出口・仕掛け箱にない仕掛け）を取り除く。
+// ステージの中身が変わったあとに古い盤面を読み込んでも、行き先のない水路が描かれないようにする。
+export function sanitizeBoard(board, stage) {
+  if (!board || !Array.isArray(board.parts) || !Array.isArray(board.wires)) return createBoard();
+  const counts = {};
+  const parts = board.parts.filter((part) => {
+    counts[part.type] = (counts[part.type] ?? 0) + 1;
+    return counts[part.type] <= (stage.tray[part.type] ?? 0);
+  });
+  const partIds = new Set(parts.map((part) => part.id));
+  const exists = (end) => {
+    if ('faucet' in end) return end.faucet in stage.faucets;
+    if ('outlet' in end) return end.outlet in stage.outputs;
+    return partIds.has(end.part);
+  };
+  const wires = board.wires.filter((wire) => exists(wire.from) && exists(wire.to));
+  return { parts, wires };
 }
 
 // 蛇口の開け方ごとに、仕掛けの出力・出口・水路に水が流れているかを返す。

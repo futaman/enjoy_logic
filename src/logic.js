@@ -95,11 +95,12 @@ export function expectedOf(stage) {
   return Object.fromEntries(Object.entries(stage.outputs).map(([name, kind]) => [name, kind === 'flower']));
 }
 
-// ステージの蛇口の開け方（画面に見えている1つだけ）で回路を動かし、出口ごとの答えと比べる。
+// 画面に見えている蛇口の開け方（1つだけ）で回路を動かし、出口ごとの答えと比べる。
+// 手で回せる蛇口があるステージでは、プレイヤーが回したあとの開け方を faucets に渡す。
 // 全部合えば { ok: true }、違えば出口ごとの値を返す。
-export function checkCircuit(circuit, stage) {
+export function checkCircuit(circuit, stage, faucets = stage.faucets) {
   const expected = expectedOf(stage);
-  const actual = evaluate(circuit, stage.faucets);
+  const actual = evaluate(circuit, faucets);
   const same = Object.keys(expected).every((name) => expected[name] === actual[name]);
   return same ? { ok: true } : { ok: false, expected, actual };
 }

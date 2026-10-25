@@ -1,14 +1,14 @@
 // 組み合わせ回路編のステージ（仕様書「論理回路まなびゲーム 仕様書（第2版）」より）。
 // 1つのステージは、画面に見えている1つの状況だけを扱う（見えない開け方では判定しない）。
-//   faucets は蛇口の開け閉め（ステージで決まっていて、プレイヤーは変えられない）。
+//   faucets は蛇口の開け閉めの始めの状態。基本はステージで決まっていて、プレイヤーは変えられない。
+//   switchable は、プレイヤーがタップで開け閉めできる蛇口（手で回せる蛇口）。判定は回したあとの状態で行う。
 //   outputs は出口ごとにいるキャラ。'flower'（花：水が欲しい＝1）か 'oyaji'（おやじ：水をかけない＝0）。
 //   tray は仕掛け箱に入っている数。仕掛け箱の仕掛けは全部使う（ルール）。
 //   intro は、このステージで初めて出てくるキャラ（紹介カードを出す）。
-//   solution は参考解（テストで正解になることを確かめる）。
+//   solution は参考解（テストで正解になることを確かめる）。solution.faucets は、手で回せる蛇口の正しい開け方。
 
 const STAGES = [
   {
-    no: 1,
     title: 'はじめての水やり',
     mission: '開いている蛇口から、花に水を届けよう',
     lesson: '水がある＝1',
@@ -22,7 +22,6 @@ const STAGES = [
     },
   },
   {
-    no: 2,
     title: 'おやじの昼寝',
     mission: '花には水を、おやじには水をかけないように、出口を全部つなごう',
     lesson: '水がない＝0',
@@ -36,7 +35,6 @@ const STAGES = [
     },
   },
   {
-    no: 3,
     title: '天野君の水筒',
     mission: '蛇口は閉じたまま。天野君の力を借りて、花に水を届けよう',
     lesson: 'NOT（0を1にする）',
@@ -50,7 +48,6 @@ const STAGES = [
     },
   },
   {
-    no: 4,
     title: 'やだね！',
     mission: '開いた蛇口しかない。天野君を使って、おやじを寝かせたまま花にも水を',
     lesson: 'NOT（1を0にする）',
@@ -64,7 +61,6 @@ const STAGES = [
     },
   },
   {
-    no: 5,
     title: 'カタブツ',
     mission: 'カタブツを通して、花に水を届けよう',
     lesson: 'AND（両方1のときだけ1）',
@@ -78,7 +74,6 @@ const STAGES = [
     },
   },
   {
-    no: 6,
     title: 'カタブツは動かない',
     mission: 'カタブツを使って、おやじを寝かせよう。花にも水を',
     lesson: 'AND（片方だけなら0）',
@@ -92,7 +87,24 @@ const STAGES = [
     },
   },
   {
-    no: 7,
+    title: 'カタブツを説得',
+    mission: '蛇口Bは手で回せる。カタブツを通して花に水を届け、おやじは寝かせて',
+    lesson: 'AND（両方を1にすると1）',
+    faucets: { A: true, B: false },
+    switchable: ['B'],
+    outputs: { f1: 'flower', o1: 'oyaji' },
+    tray: { AND: 1, NOT: 1 },
+    intro: ['switch'],
+    solution: {
+      faucets: { B: true },
+      gates: [
+        { id: 'g1', type: 'AND', inputs: [{ input: 'A' }, { input: 'B' }] },
+        { id: 'g2', type: 'NOT', inputs: [{ input: 'B' }] },
+      ],
+      outputs: { f1: { gate: 'g1' }, o1: { gate: 'g2' } },
+    },
+  },
+  {
     title: 'イエスマン',
     mission: 'イエスマンを通して、花に水を届けよう',
     lesson: 'OR（どちらかが1なら1）',
@@ -106,7 +118,6 @@ const STAGES = [
     },
   },
   {
-    no: 8,
     title: '多様性好き',
     mission: 'イエスマンと多様性好きを使って、花には水を、おやじは寝かせて',
     lesson: 'XOR（2つがちがうときだけ1）',
@@ -123,7 +134,24 @@ const STAGES = [
     },
   },
   {
-    no: 9,
+    title: '多様性好きを喜ばせろ',
+    mission: '蛇口Bは手で回せる。多様性好きを通して花に水を届け、カタブツの先のおやじは寝かせて',
+    lesson: 'XOR（ちがう水にすると1）',
+    faucets: { A: true, B: true },
+    switchable: ['B'],
+    outputs: { f1: 'flower', o1: 'oyaji' },
+    tray: { XOR: 1, AND: 1 },
+    intro: [],
+    solution: {
+      faucets: { B: false },
+      gates: [
+        { id: 'g1', type: 'XOR', inputs: [{ input: 'A' }, { input: 'B' }] },
+        { id: 'g2', type: 'AND', inputs: [{ input: 'A' }, { input: 'B' }] },
+      ],
+      outputs: { f1: { gate: 'g1' }, o1: { gate: 'g2' } },
+    },
+  },
+  {
     title: '日照りの庭',
     mission: '蛇口が全部閉じている。おやじを寝かせたまま、花に水を届けよう',
     lesson: 'NOT と OR を組み合わせる',
@@ -140,7 +168,6 @@ const STAGES = [
     },
   },
   {
-    no: 10,
     title: 'カタブツを動かせ',
     mission: '閉じた蛇口があっても、カタブツを通して花に水を届けよう',
     lesson: 'NOT で作った水を AND に入れる',
@@ -157,7 +184,6 @@ const STAGES = [
     },
   },
   {
-    no: 11,
     title: 'にぎやかな庭',
     mission: '花2つとおやじ1人。仕掛けを全部使って、みんなの言うとおりにしよう',
     lesson: '3つの仕掛けを使い分ける',
@@ -175,7 +201,6 @@ const STAGES = [
     },
   },
   {
-    no: 12,
     title: '天野君ふたり',
     mission: '開いた蛇口は1つだけ。仕掛けを全部使って、花に水を、おやじは寝かせて',
     lesson: 'NOT を2つ使って AND と OR を動かす',
@@ -195,5 +220,10 @@ const STAGES = [
   },
 ];
 
-// inputs は蛇口の名前の並び（画面の上から）。
-export const COMBINATIONAL_STAGES = STAGES.map((stage) => ({ ...stage, inputs: Object.keys(stage.faucets) }));
+// no はステージの番号、inputs は蛇口の名前の並び（画面の上から）。
+export const COMBINATIONAL_STAGES = STAGES.map((stage, i) => ({
+  switchable: [],
+  ...stage,
+  no: i + 1,
+  inputs: Object.keys(stage.faucets),
+}));
