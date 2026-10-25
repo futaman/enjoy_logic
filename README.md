@@ -25,9 +25,19 @@
 - [x] 仕掛けが3つ以上のステージは庭を横に広げる。別の水が流れる水路は、縦の線が重ならないようにずらす
 - [x] 見えない庭（ステージ11・12）：準備完了を押すまで、水路の水が見えない（蛇口・花だん・予定表は見える）
 - [x] アニメーションの速さの切り替え（ゆっくり・ふつう・はやい。初めはゆっくり）
-- [x] 開発中は全ステージを選べる（`src/app.js` の `UNLOCK_ALL_STAGES`。公開するときは false にする）
+- [x] ステージは前のステージをクリアすると開く。URL の末尾に `?all` を付けると全ステージを選べる（開発・確認用）
+- [x] GitHub Pages で公開（main に入るとテストを走らせ、通れば公開する。`.github/workflows/pages.yml`）
 - [ ] 画面の残り：長押しメニュー、効果音と振動、ふりがな
 - [ ] 順序回路編
+
+## 公開（GitHub Pages）
+
+公開先：https://futaman.github.io/enjoy_logic/ （全ステージを開くときは https://futaman.github.io/enjoy_logic/?all ）
+
+main にプッシュ（プルリクエストのマージ）すると、GitHub Actions が `npm test` を走らせ、通ったときだけ `index.html` と `src/` を公開する。
+テストが落ちたときは公開されず、前の版のまま残る。
+
+初めの1回だけ、リポジトリの Settings → Pages → Build and deployment の Source を「GitHub Actions」にしておく。
 
 ## 開発
 

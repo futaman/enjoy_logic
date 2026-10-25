@@ -53,8 +53,8 @@ const SPEEDS = [
   { id: 'fast', label: 'はやい', scale: 0.5 },
 ];
 const DEFAULT_SPEED = 'slow';
-// 開発中は、クリアしていないステージも全部選べるようにしておく（公開するときは false にする）。
-const UNLOCK_ALL_STAGES = true;
+// ステージは前のステージをクリアすると開く。開発や確認のときは、URL の末尾に ?all を付けると全部選べる。
+const UNLOCK_ALL_STAGES = new URLSearchParams(window.location.search).has('all');
 const MIN_SCALE = 0.8; // 文字が読める最小の大きさ（小さい画面では横にスクロールして庭を動かす）
 const MAX_SCALE = 1.3;
 
