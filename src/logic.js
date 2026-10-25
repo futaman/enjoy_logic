@@ -44,12 +44,14 @@ export function validateCircuit(circuit) {
   }
 }
 
-export function evaluate(circuit, values) {
+// 出口の値と、すべての仕掛けの出力を返す（水路の色づけに使う）。
+export function solve(circuit, values) {
   validateCircuit(circuit);
   const gateById = new Map(circuit.gates.map((gate) => [gate.id, gate]));
   const cache = new Map();
 
   const valueOf = (ref, visiting) => {
+    if ('const' in ref) return ref.const;
     if ('input' in ref) {
       if (!(ref.input in values)) throw new Error(`蛇口の値がない: ${ref.input}`);
       return values[ref.input];
@@ -65,9 +67,17 @@ export function evaluate(circuit, values) {
     return result;
   };
 
-  return Object.fromEntries(
+  const outputs = Object.fromEntries(
     Object.entries(circuit.outputs).map(([name, ref]) => [name, valueOf(ref, new Set())]),
   );
+  const gates = Object.fromEntries(
+    circuit.gates.map((gate) => [gate.id, valueOf({ gate: gate.id }, new Set())]),
+  );
+  return { gates, outputs };
+}
+
+export function evaluate(circuit, values) {
+  return solve(circuit, values).outputs;
 }
 
 // 蛇口の開け方を全部並べる。['A', 'B'] なら 00, 01, 10, 11 の4通り。
