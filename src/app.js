@@ -29,6 +29,7 @@ const PLAY_STEP_MS = 150; // 蛇口を触ったとき、水が1段進む時間�
 const JUDGE_STEP_MS = 300; // 実行のとき、水が1段進む時間
 const REDUCED_MOTION = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 const MIN_SCALE = 0.8; // 文字が読める最小の大きさ（小さい画面では横にスクロールして庭を動かす）
+const MAX_SCALE = 1.3;
 
 const $ = (selector) => document.querySelector(selector);
 const wrap = $('#garden-wrap');
@@ -98,8 +99,11 @@ function setScale(scale) {
 }
 
 // 幅に合わせる（小さい画面では最小の大きさまで）。拡大・縮小はこの大きさの0.5〜2倍。
+// 大きい画面でも、下のボタンや仕掛け箱が見えるように、画面の高さの6割までにする。
 function fitWidth(minimum = MIN_SCALE) {
-  state.baseScale = Math.max(wrap.clientWidth / LAYOUT.width, minimum);
+  const byWidth = wrap.clientWidth / LAYOUT.width;
+  const byHeight = (window.innerHeight * 0.6) / LAYOUT.height;
+  state.baseScale = Math.max(Math.min(byWidth, byHeight, MAX_SCALE), minimum);
   state.zoom = 1;
   setScale(state.baseScale);
   wrap.scrollLeft = 0;
@@ -109,17 +113,17 @@ function fitWidth(minimum = MIN_SCALE) {
 // 指（マウス）の位置の下にある庭の点を動かさないように、拡大・縮小する。
 // 2本指のときは、指の動きに合わせて庭も動く。
 function zoomAt(zoom, clientX, clientY) {
-  const rect = wrap.getBoundingClientRect();
+  const before = garden.getBoundingClientRect();
   const oldScale = state.baseScale * state.zoom;
-  const px = clientX - rect.left;
-  const py = clientY - rect.top;
-  const gardenX = (wrap.scrollLeft + px) / oldScale;
-  const gardenY = (wrap.scrollTop + py) / oldScale;
+  const gardenX = (clientX - before.left) / oldScale;
+  const gardenY = (clientY - before.top) / oldScale;
   state.zoom = Math.min(Math.max(zoom, 0.5), 2);
   const scale = state.baseScale * state.zoom;
   setScale(scale);
-  wrap.scrollLeft = gardenX * scale - px;
-  wrap.scrollTop = gardenY * scale - py;
+  // 大きさを変えたあと、同じ庭の点が指の下に来るようにスクロールする
+  const after = garden.getBoundingClientRect();
+  wrap.scrollLeft += after.left + gardenX * scale - clientX;
+  wrap.scrollTop += after.top + gardenY * scale - clientY;
 }
 
 // ---------- 状態の変更 ----------
@@ -790,3 +794,4 @@ window.addEventListener('resize', () => {
 });
 
 showScreen('select');
+document.documentElement.dataset.ready = '1';

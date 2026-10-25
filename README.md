@@ -31,6 +31,8 @@ npm test
 画面を見る（ビルドは不要）:
 
 ```sh
-python3 -m http.server 8000
+python serve.py
 # ブラウザで http://localhost:8000/ を開く
 ```
+
+`index.html` を直接（ダブルクリックで）開いても動きません。`python -m http.server` は、Windows では `.js` を正しく返さないことがあるので、`serve.py` を使ってください。

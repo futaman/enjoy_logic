@@ -26,6 +26,7 @@
       background: var(--bg);
     }
     [hidden] { display: none !important; }
+    #load-error { margin: 16px; padding: 12px 16px; border-radius: 12px; background: #fff0f0; border: 2px solid var(--ng); }
 
     header { padding: 10px 16px 0; }
     .top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -72,7 +73,7 @@
       touch-action: none;
     }
     #garden-wrap::-webkit-scrollbar { display: none; }
-    #garden-box { position: relative; }
+    #garden-box { position: relative; margin: 0 auto; }
     #garden {
       position: absolute;
       left: 0;
@@ -317,6 +318,11 @@
   </style>
 </head>
 <body>
+  <div id="load-error" hidden>
+    <p><b>画面のプログラムを読み込めませんでした。</b></p>
+    <p>このフォルダで <code>python serve.py</code> を実行し、<code>http://localhost:8000/</code> を開いてください。</p>
+    <p>それでも直らないときは、Ctrl+Shift+R（Mac は Cmd+Shift+R）で読み込み直してください。</p>
+  </div>
   <header>
     <div class="top">
       <button id="menu">ステージ</button>
@@ -379,5 +385,13 @@
   </div>
 
   <script type="module" src="src/app.js"></script>
+  <script>
+    // 画面のプログラムが動かなかったときは、開き方を案内する
+    window.addEventListener('load', () => {
+      if (document.documentElement.dataset.ready) return;
+      document.getElementById('game').hidden = true;
+      document.getElementById('load-error').hidden = false;
+    });
+  </script>
 </body>
 </html>
