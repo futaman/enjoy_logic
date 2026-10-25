@@ -13,7 +13,7 @@ import {
 import { CHARACTERS } from './characters.js';
 import { expectedOf } from './logic.js';
 import {
-  LAYOUT,
+  layoutOf,
   FAUCETS,
   PART_NAMES,
   addPart,
@@ -32,6 +32,7 @@ import {
   rowTop,
   ruleProblems,
   sanitizeBoard,
+  wirePaths,
   sameEnd,
 } from './board.js';
 
@@ -86,6 +87,7 @@ const state = {
 };
 
 const currentStage = () => COMBINATIONAL_STAGES[state.stageIndex];
+const layout = () => layoutOf(currentStage()); // 今のステージの庭の大きさ
 
 // 保存できなくても遊べるように、読み書きは try で囲む。
 function loadProgress() {
@@ -140,15 +142,18 @@ function setScale(scale) {
   garden.style.setProperty('--s', scale);
   garden.style.transform = `scale(${scale})`;
   // 拡大した分の大きさを、スクロールの範囲として確保する
-  $('#garden-box').style.width = `${LAYOUT.width * scale}px`;
-  $('#garden-box').style.height = `${LAYOUT.height * scale}px`;
+  const L = layout();
+  garden.style.width = `${L.width}px`;
+  garden.style.height = `${L.height}px`;
+  $('#garden-box').style.width = `${L.width * scale}px`;
+  $('#garden-box').style.height = `${L.height * scale}px`;
 }
 
 // 幅に合わせる（小さい画面では最小の大きさまで）。拡大・縮小はこの大きさの0.5〜2倍。
 // 大きい画面でも、下のボタンや仕掛け箱が見えるように、画面の高さの6割までにする。
 function fitWidth(minimum = MIN_SCALE) {
-  const byWidth = wrap.clientWidth / LAYOUT.width;
-  const byHeight = (window.innerHeight * 0.6) / LAYOUT.height;
+  const byWidth = wrap.clientWidth / layout().width;
+  const byHeight = (window.innerHeight * 0.6) / layout().height;
   state.baseScale = Math.max(Math.min(byWidth, byHeight, MAX_SCALE), minimum);
   state.zoom = 1;
   setScale(state.baseScale);
@@ -463,9 +468,16 @@ function showClear(stars) {
 
 // ---------- 描画 ----------
 
+// 見えない庭で、まだ水を流していない（準備完了を押していない）とき。
+function veiled(stage) {
+  return stage.hidden && !state.judging && !(state.run && state.run.kind !== 'rule');
+}
+
 function render() {
   const stage = currentStage();
-  const live = currentLive();
+  // 見えない庭では、水を流すまで水路の水を見せない（蛇口の開け閉めは見せる）
+  const live = veiled(stage) ? null : currentLive();
+  wrap.classList.toggle('veiled', veiled(stage));
   $('#title').textContent = `${stage.no}. ${stage.title}`;
   $('#lesson').textContent = stage.lesson;
   $('#mission').textContent = `目標：${stage.mission}`;
@@ -527,7 +539,7 @@ function renderGarden(stage, live) {
     const switchable = stage.switchable.includes(name);
     const badge = switchable ? '<span class="badge">タップで回せる</span>' : '';
     boxes.push(
-      `<div class="box faucet ${open ? 'open' : ''} ${switchable ? 'switchable' : 'fixed'}" data-faucet="${name}" style="left:${LAYOUT.faucetX}px;top:${top}px">${faucetIcon(open, switchable)}<span class="label"><span class="name">蛇口${name}</span><span class="sub">${open ? '開いている' : '閉じている'}</span></span>${badge}</div>`,
+      `<div class="box faucet ${open ? 'open' : ''} ${switchable ? 'switchable' : 'fixed'}" data-faucet="${name}" style="left:${layout().faucetX}px;top:${top}px">${faucetIcon(open, switchable)}<span class="label"><span class="name">蛇口${name}</span><span class="sub">${open ? '開いている' : '閉じている'}</span></span>${badge}</div>`,
     );
     pins.push(pinHtml(stage, { faucet: name }, open));
   });
@@ -577,7 +589,7 @@ function renderGarden(stage, live) {
       problemOutlets.includes(name) ? 'problem' : '',
     ];
     boxes.push(
-      `<div class="${classes.join(' ')}" data-outlet="${name}" style="left:${LAYOUT.outletX}px;top:${rowTop(index)}px;${grow}">${picture}<span class="label"><span class="name">${outletLabel(stage, name)}</span><span class="sub">${goal}</span></span>${mark}${say}</div>`,
+      `<div class="${classes.join(' ')}" data-outlet="${name}" style="left:${layout().outletX}px;top:${rowTop(index)}px;${grow}">${picture}<span class="label"><span class="name">${outletLabel(stage, name)}</span><span class="sub">${goal}</span></span>${mark}${say}</div>`,
     );
     pins.push(pinHtml(stage, { outlet: name }, Boolean(water)));
   });
@@ -605,12 +617,10 @@ function renderGarden(stage, live) {
     pins.push(pinHtml(stage, { part: part.id, pin: 'out' }, wet));
   });
 
+  const paths = wirePaths(stage, state.board);
   const wires = state.board.wires
     .map((wire, i) => {
-      const a = pinPosition(stage, state.board, wire.from);
-      const b = pinPosition(stage, state.board, wire.to);
-      const middle = (a.x + b.x) / 2;
-      const d = `M${a.x} ${a.y} H${middle} V${b.y} H${b.x}`;
+      const { d } = paths[i];
       const half = levels ? 2 * levels.wires[i] + 1 : 0;
       const on = reached(half) && Boolean(live?.wires[i]);
       const classes = [
@@ -628,7 +638,8 @@ function renderGarden(stage, live) {
 
   // 花に続けて水をやれると、庭がひまわりの森になる
   wrap.classList.toggle('forest', state.run?.kind === 'ok' && state.run.growth >= 4);
-  garden.innerHTML = `<svg id="wires" width="${LAYOUT.width}" height="${LAYOUT.height}" viewBox="0 0 ${LAYOUT.width} ${LAYOUT.height}">${wires}</svg>${boxes.join('')}${pins.join('')}`;
+  const L = layoutOf(stage);
+  garden.innerHTML = `<svg id="wires" width="${L.width}" height="${L.height}" viewBox="0 0 ${L.width} ${L.height}">${wires}</svg>${boxes.join('')}${pins.join('')}`;
 }
 
 // 司会のじょうろの吹き出し。実行の結果と、うまくいかなかった理由を言う。
@@ -710,6 +721,7 @@ function renderStageList() {
 function characterIcon(key) {
   if (key === 'faucet') return faucetIcon(true);
   if (key === 'switch') return faucetIcon(true, true);
+  if (key === 'fog') return hostIcon();
   if (key === 'flower') return flowerIcon('bloom');
   if (key === 'oyaji') return oyajiIcon('sleep');
   return gateIcon(key);
@@ -774,7 +786,7 @@ const readEnd = (el) => JSON.parse(decodeURIComponent(el.dataset.end));
 
 function gardenPoint(event) {
   const rect = garden.getBoundingClientRect();
-  const scale = rect.width / LAYOUT.width;
+  const scale = rect.width / layout().width;
   return { x: (event.clientX - rect.left) / scale, y: (event.clientY - rect.top) / scale };
 }
 
@@ -804,7 +816,7 @@ function startDrag(event, drag) {
   drag.downY = event.clientY;
   drag.pointerId = event.pointerId;
   drag.moved = false;
-  drag.scale = garden.getBoundingClientRect().width / LAYOUT.width;
+  drag.scale = garden.getBoundingClientRect().width / layout().width;
   activeDrag = drag;
   if (!state.judging) stopReveal(); // 触り始めたら、水をたどる演出はやめて全部見せる
   const move = (e) => {
@@ -870,7 +882,7 @@ function onEnd(event, drag) {
       return;
     }
     if (inside(event, tray)) commit(removePart(state.board, drag.id));
-    else commit(movePart(state.board, drag.id, drag.pos.x, drag.pos.y));
+    else commit(movePart(state.board, drag.id, drag.pos.x, drag.pos.y, layout()));
     return;
   }
   if (drag.kind === 'faucet') {
@@ -896,7 +908,8 @@ function onEnd(event, drag) {
     }
     if (inside(event, garden)) {
       const p = gardenPoint(event);
-      commit(addPart(state.board, drag.type, p.x - LAYOUT.partWidth / 2, p.y - LAYOUT.partHeight / 2));
+      const L = layout();
+      commit(addPart(state.board, drag.type, p.x - L.partWidth / 2, p.y - L.partHeight / 2, L));
     }
   }
 }

@@ -11,6 +11,9 @@ import {
   removePart,
   ruleProblems,
   sanitizeBoard,
+  layoutOf,
+  wirePaths,
+  LAYOUT,
 } from '../src/board.js';
 import { COMBINATIONAL_STAGES } from '../src/stages.js';
 
@@ -216,4 +219,36 @@ test('古い盤面を読み込んでも、ステージにない蛇口・出口�
     ],
   });
   assert.deepEqual(sanitizeBoard(null, s), createBoard());
+});
+
+test('庭は、仕掛けが3つ以上のステージで横に広がり、出口は右端に寄る', () => {
+  assert.equal(layoutOf(stage(5)).width, LAYOUT.width); // 仕掛け1つ
+  const wide = layoutOf(stage(14)); // 仕掛け4つ
+  assert.ok(wide.width > layoutOf(stage(13)).width);
+  assert.ok(layoutOf(stage(13)).width > LAYOUT.width);
+  assert.equal(wide.width - wide.outletX, LAYOUT.width - LAYOUT.outletX);
+  // 広い庭では、仕掛けをもっと右まで置ける
+  const board = addPart(createBoard(), 'NOT', 2000, 100, wide);
+  assert.ok(board.parts[0].x > LAYOUT.outletX);
+});
+
+test('別の水が流れる水路は、縦の線が重ならないようにずらす', () => {
+  const s = stage(14);
+  const C = { faucet: 'C' };
+  // 3つの蛇口から、同じ高さに置いた仕掛けへ。真ん中で曲がると縦の線が重なる
+  const board = build(
+    [['NOT', 400, 160], ['NOT', 400, 160], ['NOT', 400, 160]],
+    [[A, pin('p1', 'in0')], [B, pin('p2', 'in0')], [C, pin('p3', 'in0')]],
+  );
+  const xs = wirePaths(s, board).map((path) => path.x);
+  for (let i = 0; i < xs.length; i++) {
+    for (let j = i + 1; j < xs.length; j++) assert.ok(Math.abs(xs[i] - xs[j]) >= 14, `${xs}`);
+  }
+});
+
+test('同じ出口から分かれた水路は、同じ縦の線を通ってよい', () => {
+  const s = stage(14);
+  const board = build([['NOT', 400, 160], ['NOT', 400, 160]], [[A, pin('p1', 'in0')], [A, pin('p2', 'in0')]]);
+  const [first, second] = wirePaths(s, board);
+  assert.equal(first.x, second.x);
 });

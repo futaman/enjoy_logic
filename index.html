@@ -118,6 +118,22 @@
       transition: opacity 0.6s;
     }
     #garden-wrap.forest::before { opacity: 0.55; }
+    /* 見えない庭：準備完了を押すまで水が見えない */
+    #garden-wrap.veiled { background: linear-gradient(#d9dde3 0 32%, #b9c7a6 32%); }
+    #garden-wrap.veiled::after {
+      content: "見えない庭：水は、流してのお楽しみ";
+      position: absolute;
+      right: 8px;
+      bottom: 8px;
+      z-index: 6;
+      padding: 2px 12px;
+      border: 2px solid var(--ink);
+      border-radius: 999px;
+      background: #fff;
+      font-size: 13px;
+      font-weight: 900;
+      pointer-events: none;
+    }
     #garden-box { position: relative; margin: 0 auto; }
     #garden {
       position: absolute;

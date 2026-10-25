@@ -5,6 +5,7 @@
 //   outputs は出口ごとにいるキャラ。'flower'（花：水が欲しい＝1）か 'oyaji'（おやじ：水をかけない＝0）。
 //   tray は仕掛け箱に入っている数。仕掛け箱の仕掛けは全部使う（ルール）。
 //   intro は、このステージで初めて出てくるキャラ（紹介カードを出す）。
+//   hidden が true のステージは「見えない庭」。準備完了を押すまで、水路の水が見えない。
 //   solution は参考解（テストで正解になることを確かめる）。solution.faucets は、手で回せる蛇口の正しい開け方。
 
 const STAGES = [
@@ -158,7 +159,8 @@ const STAGES = [
     faucets: { A: false, B: false },
     outputs: { f1: 'flower', o1: 'oyaji' },
     tray: { NOT: 1, OR: 1 },
-    intro: [],
+    hidden: true,
+    intro: ['fog'],
     solution: {
       gates: [
         { id: 'g1', type: 'NOT', inputs: [{ input: 'A' }] },
@@ -174,6 +176,7 @@ const STAGES = [
     faucets: { A: true, B: false },
     outputs: { f1: 'flower' },
     tray: { AND: 1, NOT: 1 },
+    hidden: true,
     intro: [],
     solution: {
       gates: [
@@ -190,6 +193,7 @@ const STAGES = [
     faucets: { A: false, B: true, C: true },
     outputs: { f1: 'flower', o1: 'oyaji', f2: 'flower' },
     tray: { AND: 1, NOT: 1, XOR: 1 },
+    hidden: true,
     intro: [],
     solution: {
       gates: [
@@ -207,6 +211,7 @@ const STAGES = [
     faucets: { A: true, B: false, C: false },
     outputs: { f1: 'flower', o1: 'oyaji' },
     tray: { NOT: 2, AND: 1, OR: 1 },
+    hidden: true,
     intro: [],
     solution: {
       gates: [
@@ -223,6 +228,7 @@ const STAGES = [
 // no はステージの番号、inputs は蛇口の名前の並び（画面の上から）。
 export const COMBINATIONAL_STAGES = STAGES.map((stage, i) => ({
   switchable: [],
+  hidden: false,
   ...stage,
   no: i + 1,
   inputs: Object.keys(stage.faucets),

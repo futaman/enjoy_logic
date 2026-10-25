@@ -66,3 +66,10 @@ test('手で回せる蛇口は、初めて出てくるステージで紹介さ�
   const first = COMBINATIONAL_STAGES.find((stage) => stage.switchable.length > 0);
   assert.ok(first.intro.includes('switch'));
 });
+
+test('見えない庭は後半のステージだけで、最初の見えない庭で紹介される', () => {
+  const hidden = COMBINATIONAL_STAGES.filter((stage) => stage.hidden);
+  assert.ok(hidden.length >= 2);
+  assert.ok(hidden[0].intro.includes('fog'));
+  assert.ok(hidden[0].no > COMBINATIONAL_STAGES.length / 2);
+});
