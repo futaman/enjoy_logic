@@ -163,3 +163,27 @@ export function hostIcon() {
     <circle class="drop" cx="38" cy="16" r="1.6" fill="${WATER}"/>
   `, '0 0 40 40', 'host');
 }
+
+// 時間（予定表）。朝：のぼるお日さま、昼：まぶしいお日さま、夕方：しずむ夕日、夜：ねむい月。
+export function timeIcon(time) {
+  const rays = (cx, cy, r, color) => Array.from({ length: 8 }, (_, i) => {
+    const a = (i * 45 * Math.PI) / 180;
+    return `<path d="M${(cx + Math.cos(a) * r).toFixed(1)} ${(cy + Math.sin(a) * r).toFixed(1)} L${(cx + Math.cos(a) * (r + 5)).toFixed(1)} ${(cy + Math.sin(a) * (r + 5)).toFixed(1)}" stroke="${color}" stroke-width="2.6" stroke-linecap="round"/>`;
+  }).join('');
+  const smile = (cx, cy) => `<circle cx="${cx - 3}" cy="${cy - 1}" r="1.2" fill="${INK}"/><circle cx="${cx + 3}" cy="${cy - 1}" r="1.2" fill="${INK}"/>
+    <path d="M${cx - 3} ${cy + 2.5} Q${cx} ${cy + 5} ${cx + 3} ${cy + 2.5}" ${LINE} fill="none" stroke-width="1.4"/>`;
+  const bodies = {
+    morning: `<clipPath id="sky-m"><rect x="0" y="0" width="40" height="27"/></clipPath>
+      <g clip-path="url(#sky-m)">${rays(20, 27, 11, '#ffb400')}<circle cx="20" cy="27" r="9" fill="#ffd23f" ${LINE}/>${smile(20, 24)}</g>
+      <path d="M2 27 H38" ${LINE} stroke-width="2.6"/><path d="M6 32 H34" stroke="#9fd85a" stroke-width="3" stroke-linecap="round"/>`,
+    noon: `${rays(20, 20, 11, '#ffb400')}<circle cx="20" cy="20" r="9" fill="#ffd23f" ${LINE}/>${smile(20, 20)}`,
+    evening: `<clipPath id="sky-e"><rect x="0" y="0" width="40" height="27"/></clipPath>
+      <g clip-path="url(#sky-e)"><circle cx="20" cy="29" r="11" fill="#ff7a3c" ${LINE}/>
+      <path d="M16 23 Q17 22 18 23 M22 23 Q23 22 24 23" ${LINE} fill="none" stroke-width="1.4"/></g>
+      <path d="M2 27 H38" ${LINE} stroke-width="2.6"/><path d="M8 32 H32" stroke="#ff9a6b" stroke-width="3" stroke-linecap="round"/>`,
+    night: `<path d="M24 5 A15 15 0 1 0 35 27 A12 12 0 1 1 24 5 Z" fill="#fff3b0" ${LINE}/>
+      <path d="M15 20 Q17 21.5 19 20" ${LINE} fill="none" stroke-width="1.4"/>
+      <path d="M33 6 L34 9 L37 10 L34 11 L33 14 L32 11 L29 10 L32 9 Z" fill="#ffd23f" ${LINE} stroke-width="1.2"/>`,
+  };
+  return svg(bodies[time] ?? '', '0 0 40 40', `time ${time}`);
+}

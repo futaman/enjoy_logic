@@ -107,7 +107,7 @@ export function pinPosition(stage, board, end) {
     return { x: L.faucetX + L.faucetWidth, y: rowTop(FAUCETS.indexOf(end.faucet)) + 25 };
   }
   if ('outlet' in end) {
-    return { x: L.outletX, y: rowTop(Object.keys(stage.outputs).indexOf(end.outlet)) + 25 };
+    return { x: L.outletX, y: rowTop(stage.outlets.indexOf(end.outlet)) + 25 };
   }
   const part = findPart(board, end.part);
   if (end.pin === 'out') return { x: part.x + L.partWidth, y: part.y + 25 };
@@ -130,7 +130,7 @@ export function toCircuit(board, stage) {
       inputs: pinsOf(part.type).map((pin) => sourceOf({ part: part.id, pin })),
     })),
     outputs: Object.fromEntries(
-      Object.keys(stage.outputs).map((name) => [name, sourceOf({ outlet: name })]),
+      stage.outlets.map((name) => [name, sourceOf({ outlet: name })]),
     ),
   };
 }
@@ -177,7 +177,7 @@ export function flowLevels(board, stage) {
     );
     const wires = board.wires.map((wire) => levelOf(wire.from, new Set()));
     const outlets = Object.fromEntries(
-      Object.keys(stage.outputs).map((name) => {
+      stage.outlets.map((name) => {
         const wire = wireInto({ outlet: name });
         return [name, wire ? levelOf(wire.from, new Set()) + 1 : 1];
       }),
@@ -194,7 +194,7 @@ export function flowLevels(board, stage) {
 export function ruleProblems(board, stage) {
   const wiredTo = (end) => board.wires.some((wire) => sameEnd(wire.to, end));
   const problems = [];
-  const outlets = Object.keys(stage.outputs).filter((name) => !wiredTo({ outlet: name }));
+  const outlets = stage.outlets.filter((name) => !wiredTo({ outlet: name }));
   if (outlets.length) problems.push({ kind: 'outlet', outlets });
   const types = Object.keys(stage.tray).filter((type) => remaining(board, stage, type) > 0);
   if (types.length) problems.push({ kind: 'tray', types });

@@ -90,16 +90,23 @@ export function allRows(inputNames) {
   );
 }
 
-// 出口ごとの「正しい答え」。花は水が欲しい（1）、おやじは水をかけない（0）。
-export function expectedOf(stage) {
-  return Object.fromEntries(Object.entries(stage.outputs).map(([name, kind]) => [name, kind === 'flower']));
+// 時間（予定表の1回ぶん）の呼び名。1つのステージは、朝・昼・夕方・夜のうち決まった時間に水を流す。
+export const TIME_NAMES = { morning: '朝', noon: '昼', evening: '夕方', night: '夜' };
+
+// 出口（花だん）ごとの「正しい答え」。花は水が欲しい（1）、おやじは水をかけない（0）。
+// time はステージの予定表の1回ぶん（{ time, faucets, outputs }）。
+export function expectedOf(time) {
+  return Object.fromEntries(Object.entries(time.outputs).map(([name, kind]) => [name, kind === 'flower']));
 }
 
-// ステージの蛇口の開け方（画面に見えている1つだけ）で回路を動かし、出口ごとの答えと比べる。
-// 全部合えば { ok: true }、違えば出口ごとの値を返す。
+// 予定表の時間を順に回路を動かし、出口ごとの答えと比べる。
+// 全部の時間で合えば { ok: true }、違う時間があれば、最初の時間とその出口ごとの値を返す。
 export function checkCircuit(circuit, stage) {
-  const expected = expectedOf(stage);
-  const actual = evaluate(circuit, stage.faucets);
-  const same = Object.keys(expected).every((name) => expected[name] === actual[name]);
-  return same ? { ok: true } : { ok: false, expected, actual };
+  for (const [index, time] of stage.times.entries()) {
+    const expected = expectedOf(time);
+    const actual = evaluate(circuit, time.faucets);
+    const same = Object.keys(expected).every((name) => expected[name] === actual[name]);
+    if (!same) return { ok: false, time: index, expected, actual };
+  }
+  return { ok: true };
 }
