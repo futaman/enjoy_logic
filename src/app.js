@@ -1,6 +1,6 @@
 import { ALL_STAGES } from './stages.js';
 import { TUTORIALS } from './tutorial.js';
-import { dogIcon, faucetIcon, flowerIcon, gateIcon, hostIcon, oyajiIcon, shishiodoshiIcon, starIcon } from './icons.js';
+import { dogIcon, faucetIcon, flowerIcon, gateIcon, hostIcon, oyajiIcon, shishiodoshiIcon, starIcon, timeIcon } from './icons.js';
 import {
   ALL_ANGERS,
   ALL_DOG_FORMS,
@@ -16,7 +16,7 @@ import {
   wiltFor,
 } from './reactions.js';
 import { CHARACTERS } from './characters.js';
-import { expectedAt, expectedOf, faucetsAt } from './logic.js';
+import { TIME_NAMES, expectedAt, expectedOf, faucetsAt } from './logic.js';
 import {
   layoutOf,
   FAUCETS,
@@ -42,11 +42,13 @@ import {
   sameEnd,
 } from './board.js';
 
-// ステージの中身を作り直したので、保存の場所も新しくした（前の版の進み具合は使わない）。
-const SAVE_KEY = 'enjoy_logic.progress.v2';
+// ステージを予定表（朝・昼・夕方・夜）つきに作り直したので、保存の場所も新しくした。
+// 前の版（v1・v2）のステージの進み具合は使わない（おやじ図鑑・設定・見たカードだけ引き継ぐ）。
+const SAVE_KEY = 'enjoy_logic.progress.v3';
+const OLD_SAVE_KEYS = ['enjoy_logic.progress.v2', 'enjoy_logic.progress.v1'];
 // 時間はすべて「ふつう」の速さのときの長さ。実際には、選んだ速さの倍率をかける（speedMs）。
+const TIME_OK_MS = 700; // 1つの時間がうまくいったあと、次の時間に進むまでの間
 const JUDGE_STEP_MS = 300; // 実行のとき、水が1段進む時間
-const FLOW_STEP_MS = 150; // 手で回せる蛇口を回したとき、水が1段進む時間
 const KIND_NAMES = { flower: '花', oyaji: 'おやじ', dog: 'パクパク君' };
 const REDUCED_MOTION = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 const OYAJI_SHOW_MS = 2600; // おやじが怒る演出の長さ（タップで飛ばせる）
@@ -57,8 +59,8 @@ const SPEEDS = [
   { id: 'fast', label: 'はやい', scale: 0.5 },
 ];
 const DEFAULT_SPEED = 'slow';
-// 開発中は、クリアしていないステージも全部選べるようにしておく（公開するときは false にする）。
-const UNLOCK_ALL_STAGES = true;
+// ステージは前のステージをクリアすると開く。開発や確認のときは、URL の末尾に ?all を付けると全部選べる。
+const UNLOCK_ALL_STAGES = new URLSearchParams(window.location.search).has('all');
 const MIN_SCALE = 0.8; // 文字が読める最小の大きさ（小さい画面では横にスクロールして庭を動かす）
 const MAX_SCALE = 1.3;
 
@@ -70,7 +72,10 @@ const tray = $('#tray');
 const state = {
   stageIndex: 0,
   board: createBoard(),
+  timeIndex: 0, // 庭に見せている予定表の時間（実行中は、水を流している時間）
   faucets: {},
+  timeResults: [], // 実行で確かめた時間ごとの ○×（true / false。まだなら undefined）
+  timesSeen: [], // このステージで見た予定表の時間（チュートリアルに使う）
   undo: [],
   redo: [],
   pending: null, // 2回タップでつなぐとき、最初に触れた端
@@ -96,15 +101,22 @@ const state = {
 };
 
 const currentStage = () => ALL_STAGES[state.stageIndex];
+const currentTime = () => currentStage().times[state.timeIndex]; // 組み合わせ回路編だけ
 const layout = () => layoutOf(currentStage()); // 今のステージの庭の大きさ
 
 // 保存できなくても遊べるように、読み書きは try で囲む。
 function loadProgress() {
+  const empty = { stages: {}, oyaji: [], dogs: [], settings: {}, cardsSeen: [] };
   try {
     const saved = JSON.parse(localStorage.getItem(SAVE_KEY));
-    return saved?.stages ? { oyaji: [], dogs: [], settings: {}, cardsSeen: [], ...saved } : { stages: {}, oyaji: [], dogs: [], settings: {}, cardsSeen: [] };
+    if (saved?.stages) return { ...empty, ...saved };
+    for (const key of OLD_SAVE_KEYS) {
+      const old = JSON.parse(localStorage.getItem(key));
+      if (old) return { ...empty, oyaji: old.oyaji ?? [], settings: old.settings ?? {}, cardsSeen: old.cardsSeen ?? [] };
+    }
+    return empty;
   } catch {
-    return { stages: {}, oyaji: [], dogs: [], settings: {}, cardsSeen: [] };
+    return empty;
   }
 }
 
@@ -192,14 +204,18 @@ function openStage(index) {
   state.stageIndex = index;
   const stage = currentStage();
   state.board = sanitizeBoard(stageProgress(stage.no).board, stage);
+  state.timesSeen = [];
   state.beat = 0;
-  // 順序回路編は拍ごとの蛇口。組み合わせ回路編は、手で回せる蛇口だけプレイヤーが変えられる
-  state.faucets = stage.kind === 'seq' ? faucetsAt(stage, 0) : { ...stage.faucets };
   state.dogForm = 'puppy';
-  // 子犬のパクパク君は、会った時点で図鑑に登録する
-  if (stage.kind === 'seq' && !state.progress.dogs.includes('puppy')) {
-    state.progress.dogs.push('puppy');
-    saveProgress();
+  if (stage.kind === 'seq') {
+    // 順序回路編は拍ごとの蛇口。子犬のパクパク君は、会った時点で図鑑に登録する
+    state.faucets = faucetsAt(stage, 0);
+    if (!state.progress.dogs.includes('puppy')) {
+      state.progress.dogs.push('puppy');
+      saveProgress();
+    }
+  } else {
+    showTime(0);
   }
   state.undo = [];
   state.redo = [];
@@ -223,11 +239,19 @@ function openStage(index) {
   queueCards(stage.intro.filter((key) => !seen.includes(key)));
 }
 
+// 予定表の時間を庭に見せる。蛇口の開け閉めと花だんのキャラは、時間ごとにステージで決まっている。
+function showTime(index) {
+  state.timeIndex = index;
+  state.faucets = currentStage().times[index].faucets;
+  if (!state.timesSeen.includes(index)) state.timesSeen.push(index);
+}
+
 function setBoard(board) {
   state.board = board;
   state.selectedWire = null;
   state.run = null;
   state.marks = null;
+  state.timeResults = [];
   stopReveal();
   stageProgress(currentStage().no).board = board;
   saveProgress();
@@ -251,15 +275,6 @@ function redo() {
   if (state.judging || state.redo.length === 0) return;
   state.undo.push(state.board);
   setBoard(state.redo.pop());
-}
-
-// 手で回せる蛇口を開け閉めする。水が仕掛けを1つずつ通る様子を見せる。
-function toggleFaucet(name) {
-  if (state.judging) return;
-  state.faucets = { ...state.faucets, [name]: !state.faucets[name] };
-  state.run = null;
-  state.marks = null;
-  playReveal(FLOW_STEP_MS);
 }
 
 // 2つの端をつなぐ。向きは出口→入口に自動で揃える。
@@ -292,19 +307,28 @@ function currentLive() {
 
 // ---------- 判定 ----------
 
-// 出口の呼び名。同じキャラが2つ以上いるときは番号を付ける（花1、花2）。
+// 出口（花だん）の呼び名。2つ以上あるときは番号を付ける（花だん1、花だん2）。
+// 順序回路編の出口はパクパク君。
 function outletLabel(stage, name) {
-  const kind = stage.outputs[name];
-  const same = Object.keys(stage.outputs).filter((other) => stage.outputs[other] === kind);
-  return same.length > 1 ? `${KIND_NAMES[kind]}${same.indexOf(name) + 1}` : KIND_NAMES[kind];
+  const base = stage.kind === 'seq' ? KIND_NAMES.dog : '花だん';
+  return stage.outlets.length > 1 ? `${base}${stage.outlets.indexOf(name) + 1}` : base;
 }
 
-function failureMessage(stage, expected, actual) {
+// 予定表が2回以上のときは、どの時間のことかを頭に付ける。
+function timePrefix(stage, time) {
+  return stage.times.length > 1 ? `${TIME_NAMES[time.time]}に、` : '';
+}
+
+function failureMessage(stage, time, expected, actual) {
   if (!actual) return '水路がぐるぐる回っていて、水の行き先が決まらないよ。';
   const wrong = Object.keys(expected)
     .filter((name) => expected[name] !== actual[name])
-    .map((name) => `${outletLabel(stage, name)}${expected[name] ? 'に水が届かなかった' : 'に水がかかってしまった'}`);
-  return `${wrong.join('。')}。どこから水が来ているか、水路をたどってみよう。`;
+    .map((name) =>
+      expected[name]
+        ? `${outletLabel(stage, name)}の花に水が届かなかった`
+        : `${outletLabel(stage, name)}で寝ていたおやじに水がかかってしまった`,
+    );
+  return `${timePrefix(stage, time)}${wrong.join('。')}。その時間の蛇口から、どこへ水が来ているか、水路をたどってみよう。`;
 }
 
 // ルールが守れていないときの一言。
@@ -313,7 +337,7 @@ function ruleMessage(stage, problems) {
     .map((problem) => {
       if (problem.kind === 'outlet') {
         const names = problem.outlets.map((name) => outletLabel(stage, name)).join('と');
-        return `${names}に、まだ水路がつながっていないよ。出口は全部つなごう。`;
+        return `${names}に、まだ水路がつながっていないよ。花だんは全部つなごう。`;
       }
       if (problem.kind === 'tray') {
         const names = problem.types.map((type) => PART_NAMES[type]).join('と');
@@ -352,14 +376,15 @@ async function playReveal(stepMs) {
   render();
 }
 
-// 準備完了（実行）：画面に見えている蛇口のまま水を流し、出口のキャラが反応する。
-// 成功すると花がぐんぐん育ち、失敗するとおやじが怒る（これが一番の見せ場）。
+// 準備完了（実行）：予定表の時間の順に1回ずつ水を流し、花だんのキャラが反応する。
+// 全部の時間でうまくいくと花がぐんぐん育ち、どこかの時間で失敗すると、そこで止めておやじが怒る。
 async function judge() {
   if (state.judging) return;
   const stage = currentStage();
   state.pending = null;
   state.selectedWire = null;
   state.marks = null;
+  state.timeResults = [];
   const problems = ruleProblems(state.board, stage);
   if (problems.length) {
     state.run = { kind: 'rule', problems, host: 'おっと、水を流す前に！', message: ruleMessage(stage, problems) };
@@ -372,24 +397,43 @@ async function judge() {
   }
   state.judging = true;
   state.skip = false;
-  state.run = { kind: null, host: null, message: '水を流してみるよ…' };
-  await playReveal(JUDGE_STEP_MS);
-  const expected = expectedOf(stage);
-  const actual = currentLive()?.outputs ?? null;
-  const ok = Boolean(actual) && Object.keys(expected).every((name) => expected[name] === actual[name]);
-  state.marks = actual
-    ? Object.fromEntries(Object.keys(expected).map((name) => [name, expected[name] === actual[name]]))
-    : null;
-  if (ok) {
+  let failed = null;
+  for (const [index, time] of stage.times.entries()) {
+    showTime(index);
+    state.marks = null;
+    const when = stage.times.length > 1 ? `${TIME_NAMES[time.time]}（${index + 1}/${stage.times.length}回目）、` : '';
+    state.run = { kind: null, host: null, message: `${when}水を流してみるよ…` };
+    await playReveal(JUDGE_STEP_MS);
+    const expected = expectedOf(time);
+    const actual = currentLive()?.outputs ?? null;
+    const ok = Boolean(actual) && Object.keys(expected).every((name) => expected[name] === actual[name]);
+    state.marks = actual
+      ? Object.fromEntries(Object.keys(expected).map((name) => [name, expected[name] === actual[name]]))
+      : null;
+    state.timeResults[index] = ok;
+    if (!ok) {
+      failed = { time, expected, actual };
+      break;
+    }
+    if (index < stage.times.length - 1) {
+      state.run = { kind: null, host: null, message: `${TIME_NAMES[time.time]}はうまくいった！次は${TIME_NAMES[stage.times[index + 1].time]}。` };
+      render();
+      popText(`${TIME_NAMES[time.time]} OK！`, 'grow');
+      await pause(state.skip || REDUCED_MOTION ? 0 : speedMs(TIME_OK_MS));
+    }
+  }
+  if (!failed) {
     // 花は一気に大きく育ち、庭がひまわりの森になる
-    state.run = { kind: 'ok', host: 'やったね！', message: '花には水が届いて、おやじはぐっすり昼寝中。', growth: 4 };
+    const all = stage.times.length > 1 ? 'どの時間も、' : '';
+    state.run = { kind: 'ok', host: 'やったね！', message: `${all}花には水が届いて、おやじはぐっすり寝たまま。`, growth: 4 };
     render();
-    if (Object.values(expected).some(Boolean)) popText('ポン！', 'grow');
+    if (Object.values(expectedOf(currentTime())).some(Boolean)) popText('ポン！', 'grow');
     await pause(state.skip || REDUCED_MOTION ? 0 : speedMs(1000));
   } else {
+    const { time, expected, actual } = failed;
     const kind = failureKind(expected, actual);
     state.misses += 1;
-    state.run = { kind, message: failureMessage(stage, expected, actual) };
+    state.run = { kind, message: failureMessage(stage, time, expected, actual) };
     if (kind === 'oyaji') {
       state.angerCount += 1;
       state.run.host = hostLine(kind, state.angerCount);
@@ -403,7 +447,7 @@ async function judge() {
   }
   state.judging = false;
   render();
-  if (ok) {
+  if (!failed) {
     await pause(REDUCED_MOTION ? 0 : speedMs(500));
     finishStage();
   }
@@ -601,6 +645,7 @@ function render() {
   $('#lesson').textContent = stage.lesson;
   $('#mission').textContent = `目標：${stage.mission}`;
   $('#mission').hidden = !stage.mission;
+  renderSchedule(stage);
   renderTimeline(stage);
   renderGarden(stage, live);
   renderTray(stage);
@@ -667,6 +712,7 @@ function renderTutorial(stage) {
     faucets: state.faucets,
     board: state.board,
     cleared: Boolean(stageProgress(stage.no).cleared),
+    timesSeen: state.timesSeen,
   };
   const doneFlags = steps.map((step) => Boolean(step.done(snapshot)));
   const current = doneFlags.indexOf(false);
@@ -700,6 +746,46 @@ function partIcon(part, live) {
   return gateIcon(part.type);
 }
 
+// 予定表：どの時間に、蛇口の開け閉めと花だんのキャラがどうなるか。前もって全部見せる。
+// 行をタップすると、その時間の庭を見られる（実行中は、水を流している時間が光る）。
+function renderSchedule(stage) {
+  const box = $('#schedule');
+  // 順序回路編は予定表の代わりにタイムライン（renderTimeline）を出す
+  const seq = stage.kind === 'seq';
+  box.hidden = seq;
+  $('#schedule-title').hidden = seq;
+  if (seq) return;
+  const head = `<tr><th>時間</th>${stage.inputs.map((name) => `<th>蛇口${name}</th>`).join('')}${stage.outlets
+    .map((name) => `<th>${outletLabel(stage, name)}</th>`)
+    .join('')}<th></th></tr>`;
+  const rows = stage.times
+    .map((time, index) => {
+      const faucets = stage.inputs
+        .map((name) => {
+          const open = time.faucets[name];
+          return `<td><span class="tap ${open ? 'open' : ''}">${faucetIcon(open)}${open ? '開' : '閉'}</span></td>`;
+        })
+        .join('');
+      const outlets = stage.outlets
+        .map((name) => {
+          const kind = time.outputs[name];
+          const picture = kind === 'flower' ? flowerIcon('bloom') : oyajiIcon('sleep');
+          return `<td><span class="who ${kind}">${picture}${kind === 'flower' ? '花' : 'おやじ'}</span></td>`;
+        })
+        .join('');
+      const result = state.timeResults[index];
+      const mark = result === undefined ? '' : `<span class="time-mark ${result ? 'ok' : 'ng'}">${result ? '○' : '×'}</span>`;
+      const now = index === state.timeIndex ? 'now' : '';
+      return `<tr class="${now}" data-time="${index}"><th>${timeIcon(time.time)}${TIME_NAMES[time.time]}</th>${faucets}${outlets}<td class="result">${mark}</td></tr>`;
+    })
+    .join('');
+  const many = stage.times.length > 1;
+  $('#schedule-title').textContent = many
+    ? `予定表（${stage.times.map((time) => TIME_NAMES[time.time]).join(' → ')} の${stage.times.length}回、水を流す。行をタップでその時間の庭）`
+    : `予定表（${TIME_NAMES[stage.times[0].time]}の1回だけ水を流す）`;
+  box.innerHTML = `<table>${head}${rows}</table>`;
+}
+
 function renderGarden(stage, live) {
   const boxes = [];
   const pins = [];
@@ -717,19 +803,18 @@ function renderGarden(stage, live) {
   stage.inputs.forEach((name) => {
     const open = Boolean(state.faucets[name]);
     const top = rowTop(FAUCETS.indexOf(name));
-    // 手で回せる蛇口は、黄色い取っ手で見分ける
-    const switchable = stage.switchable.includes(name);
-    const badge = switchable ? '<span class="badge">タップで回せる</span>' : '';
     boxes.push(
-      `<div class="box faucet ${open ? 'open' : ''} ${switchable ? 'switchable' : 'fixed'}" data-faucet="${name}" style="left:${layout().faucetX}px;top:${top}px">${faucetIcon(open, switchable)}<span class="label"><span class="name">蛇口${name}</span><span class="sub">${open ? '開いている' : '閉じている'}</span></span>${badge}</div>`,
+      `<div class="box faucet ${open ? 'open' : ''}" data-faucet="${name}" style="left:${layout().faucetX}px;top:${top}px">${faucetIcon(open)}<span class="label"><span class="name">蛇口${name}</span><span class="sub">${open ? '開いている' : '閉じている'}</span></span></div>`,
     );
     pins.push(pinHtml(stage, { faucet: name }, open));
   });
 
-  // 出口にいるキャラ（花かおやじ）はステージで決まっていて、水が来ても変わらない。
-  // 変わるのは様子だけ：花は咲く／しおれる、おやじは昼寝／怒る。
-  Object.keys(stage.outputs).forEach((name, index) => {
-    const kind = stage.outputs[name];
+  // 花だんにいるキャラ（花か、寝に来たおやじか）は予定表の時間ごとに決まっていて、水が来ても変わらない。
+  // 変わるのは様子だけ：花は咲く／しおれる、おやじは寝ている／怒る。
+  wrap.dataset.time = stage.kind === 'seq' ? 'noon' : currentTime().time;
+  stage.outlets.forEach((name, index) => {
+    // 順序回路編の出口（パクパク君）はステージで決まっている。組み合わせ回路編は予定表の時間ごと
+    const kind = stage.kind === 'seq' ? stage.outputs[name] : currentTime().outputs[name];
     const half = levels ? 2 * levels.outlets[name] : 0;
     const water = reached(half) ? live?.outputs[name] : undefined;
     // 水を流している途中は、水が届いた出口から反応する。結果が出たら全部反応する。
@@ -752,7 +837,7 @@ function renderGarden(stage, live) {
       else if (open) mood = water ? 'drink' : 'sad';
       else mood = water ? 'bite' : 'wait';
     }
-    const wanted = expectedAt(stage, state.beat)[name];
+    const wanted = stage.kind === 'seq' ? expectedAt(stage, state.beat)[name] : kind === 'flower';
     const pictures = { flower: flowerIcon, oyaji: oyajiIcon, dog: (m) => dogIcon(state.dogForm, m) };
     const picture = pictures[kind](mood);
     const goals = { flower: '水がほしい', oyaji: '水はきらい', dog: wanted ? '口：あーん' : '口：むっ' };
@@ -890,9 +975,6 @@ function renderHint(stage) {
     hint.hidden = true;
     return;
   }
-  const faucets = Object.entries(stage.solution.faucets ?? {}).map(
-    ([name, open]) => `蛇口${name}を${open ? '開ける' : '閉める'}`,
-  );
   const outlets = Object.entries(stage.solution.outputs).map(
     ([name, ref]) => `${outletLabel(stage, name)} ← ${describeRef(stage, ref)}`,
   );
@@ -900,7 +982,7 @@ function renderHint(stage) {
     (gate) => `${PART_NAMES[gate.type]}(${gate.id}) ← ${gate.inputs.map((ref) => describeRef(stage, ref)).join('、')}`,
   );
   hint.hidden = false;
-  hint.textContent = (state.hintLevel === 1 ? [...faucets, ...outlets] : [...faucets, ...outlets, ...gates]).join('\n');
+  hint.textContent = (state.hintLevel === 1 ? outlets : [...outlets, ...gates]).join('\n');
 }
 
 const SECTION_NAMES = { comb: '組み合わせ回路編', seq: '順序回路編（パクパク君）' };
@@ -921,11 +1003,11 @@ function renderStageList() {
 
 function characterIcon(key) {
   if (key === 'faucet') return faucetIcon(true);
-  if (key === 'switch') return faucetIcon(true, true);
   if (key === 'fog') return hostIcon();
   if (key === 'dog') return dogIcon('puppy', 'open');
   if (key === 'flower') return flowerIcon('bloom');
   if (key === 'oyaji') return oyajiIcon('sleep');
+  if (key === 'clock') return timeIcon('morning');
   return gateIcon(key);
 }
 
@@ -1093,10 +1175,6 @@ function onEnd(event, drag) {
     else commit(movePart(state.board, drag.id, drag.pos.x, drag.pos.y, layout()));
     return;
   }
-  if (drag.kind === 'faucet') {
-    if (!drag.moved) toggleFaucet(drag.name);
-    return;
-  }
   if (drag.kind === 'card') {
     if (!drag.moved) showCard(drag.key);
     return;
@@ -1203,10 +1281,11 @@ wrap.addEventListener('pointerdown', (event) => {
     const part = findPart(state.board, partEl.dataset.part);
     drag = { kind: 'part', id: part.id, origin: { x: part.x, y: part.y }, el: partEl };
   } else if (faucetEl) {
-    const name = faucetEl.dataset.faucet;
-    drag = currentStage().switchable.includes(name) ? { kind: 'faucet', name } : { kind: 'card', key: 'faucet' };
+    drag = { kind: 'card', key: 'faucet' };
   } else if (outletEl) {
-    drag = { kind: 'card', key: currentStage().outputs[outletEl.dataset.outlet] };
+    const stage = currentStage();
+    const name = outletEl.dataset.outlet;
+    drag = { kind: 'card', key: stage.kind === 'seq' ? stage.outputs[name] : currentTime().outputs[name] };
   } else if (hitEl) {
     drag = { kind: 'wire-hit', index: Number(hitEl.dataset.wire) };
   } else {
@@ -1237,6 +1316,17 @@ tray.addEventListener('pointerdown', (event) => {
   event.preventDefault();
   startDrag(event, { kind: 'new', type, ghost });
 });
+
+$('#schedule').addEventListener('click', (event) => {
+  const row = event.target.closest('tr[data-time]');
+  if (!row || state.judging) return;
+  stopReveal();
+  showTime(Number(row.dataset.time));
+  state.run = null;
+  state.marks = null;
+  render();
+});
+$('#schedule-title').addEventListener('click', () => showCard('clock'));
 
 // ---------- ボタン ----------
 

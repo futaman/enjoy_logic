@@ -16,10 +16,25 @@ for (const stage of COMBINATIONAL_STAGES) {
   });
 
   test(`ステージ${stage.no}：出口は花かおやじで、出てくるキャラには説明がある`, () => {
-    // 出口にいるのは花かおやじだけ
-    for (const kind of Object.values(stage.outputs)) assert.ok(kind === 'flower' || kind === 'oyaji');
+    // 花だんにいるのは花かおやじだけ
+    for (const time of stage.times) {
+      for (const kind of Object.values(time.outputs)) assert.ok(kind === 'flower' || kind === 'oyaji');
+    }
     // 仕掛けの紹介カードがある
     for (const key of [...stage.intro, ...Object.keys(stage.tray)]) assert.ok(CHARACTERS[key], `${key} の説明がない`);
+  });
+}
+
+for (const stage of COMBINATIONAL_STAGES) {
+  test(`ステージ${stage.no}：予定表は1〜4回、時間の順で、どの時間も蛇口と花だんがそろっている`, () => {
+    const order = ['morning', 'noon', 'evening', 'night'];
+    assert.ok(stage.times.length >= 1 && stage.times.length <= 4);
+    const indexes = stage.times.map((time) => order.indexOf(time.time));
+    assert.ok(indexes.every((i, k) => i >= 0 && (k === 0 || i > indexes[k - 1])), '時間の順になっていない');
+    for (const time of stage.times) {
+      assert.deepEqual(Object.keys(time.faucets), stage.inputs);
+      assert.deepEqual(Object.keys(time.outputs), stage.outlets);
+    }
   });
 }
 
@@ -27,7 +42,10 @@ test('キャラは、初めて使うステージより前か同じステージ�
   const introduced = new Set();
   for (const stage of COMBINATIONAL_STAGES) {
     for (const key of stage.intro) introduced.add(key);
-    for (const kind of Object.values(stage.outputs)) assert.ok(introduced.has(kind), `ステージ${stage.no}の${kind}`);
+    for (const time of stage.times) {
+      for (const kind of Object.values(time.outputs)) assert.ok(introduced.has(kind), `ステージ${stage.no}の${kind}`);
+    }
+    if (stage.times.length > 1) assert.ok(introduced.has('clock'), `ステージ${stage.no}の予定表`);
     for (const type of Object.keys(stage.tray)) assert.ok(introduced.has(type), `ステージ${stage.no}の${type}`);
   }
 });
@@ -44,27 +62,6 @@ test('紹介カードの表は、仕掛けの本当の動きと同じ', () => {
       assert.equal(evaluate(circuit, values).out, Boolean(output), `${type} ${inputs}`);
     }
   }
-});
-
-test('手で回せる蛇口は、ステージの蛇口の中から選び、参考解は回さないと正解にならない', () => {
-  const switching = COMBINATIONAL_STAGES.filter((stage) => stage.switchable.length > 0);
-  assert.ok(switching.length >= 2);
-  for (const stage of switching) {
-    for (const name of stage.switchable) assert.ok(name in stage.faucets);
-    for (const name of Object.keys(stage.solution.faucets)) assert.ok(stage.switchable.includes(name));
-    assert.equal(checkCircuit(stage.solution, stage).ok, false, `ステージ${stage.no}`);
-  }
-});
-
-test('固定の蛇口だけのステージは、参考解が蛇口を回さない', () => {
-  for (const stage of COMBINATIONAL_STAGES.filter((s) => s.switchable.length === 0)) {
-    assert.equal(stage.solution.faucets, undefined, `ステージ${stage.no}`);
-  }
-});
-
-test('手で回せる蛇口は、初めて出てくるステージで紹介される', () => {
-  const first = COMBINATIONAL_STAGES.find((stage) => stage.switchable.length > 0);
-  assert.ok(first.intro.includes('switch'));
 });
 
 test('見えない庭は後半のステージだけで、最初の見えない庭で紹介される', () => {

@@ -118,7 +118,7 @@ export function pinPosition(stage, board, end) {
     return { x: L.faucetX + L.faucetWidth, y: rowTop(FAUCETS.indexOf(end.faucet)) + 25 };
   }
   if ('outlet' in end) {
-    return { x: L.outletX, y: rowTop(Object.keys(stage.outputs).indexOf(end.outlet)) + 25 };
+    return { x: L.outletX, y: rowTop(stage.outlets.indexOf(end.outlet)) + 25 };
   }
   const part = findPart(board, end.part);
   if (end.pin === 'out') return { x: part.x + L.partWidth, y: part.y + 25 };
@@ -171,14 +171,14 @@ export function toCircuit(board, stage) {
       inputs: pinsOf(part.type).map((pin) => sourceOf({ part: part.id, pin })),
     })),
     outputs: Object.fromEntries(
-      Object.keys(stage.outputs).map((name) => [name, sourceOf({ outlet: name })]),
+      stage.outlets.map((name) => [name, sourceOf({ outlet: name })]),
     ),
   };
 }
 
-// ステージの開け方で、出口ごとの答えと照らし合わせる。水路がぐるぐる回るときは例外になる。
-export function checkBoard(board, stage, faucets = stage.faucets) {
-  return checkCircuit(toCircuit(board, stage), stage, faucets);
+// 予定表の全部の時間で、出口ごとの答えと照らし合わせる。水路がぐるぐる回るときは例外になる。
+export function checkBoard(board, stage) {
+  return checkCircuit(toCircuit(board, stage), stage);
 }
 
 // 保存してあった盤面のうち、このステージにないもの（蛇口・出口・仕掛け箱にない仕掛け）を取り除く。
@@ -192,8 +192,8 @@ export function sanitizeBoard(board, stage) {
   });
   const partIds = new Set(parts.map((part) => part.id));
   const exists = (end) => {
-    if ('faucet' in end) return end.faucet in stage.faucets;
-    if ('outlet' in end) return end.outlet in stage.outputs;
+    if ('faucet' in end) return stage.inputs.includes(end.faucet);
+    if ('outlet' in end) return stage.outlets.includes(end.outlet);
     return partIds.has(end.part);
   };
   const wires = board.wires.filter((wire) => exists(wire.from) && exists(wire.to));
@@ -253,7 +253,7 @@ export function flowLevels(board, stage) {
     );
     const wires = board.wires.map((wire) => levelOf(wire.from, new Set()));
     const outlets = Object.fromEntries(
-      Object.keys(stage.outputs).map((name) => {
+      stage.outlets.map((name) => {
         const wire = wireInto({ outlet: name });
         return [name, wire ? levelOf(wire.from, new Set()) + 1 : 1];
       }),
@@ -270,7 +270,7 @@ export function flowLevels(board, stage) {
 export function ruleProblems(board, stage) {
   const wiredTo = (end) => board.wires.some((wire) => sameEnd(wire.to, end));
   const problems = [];
-  const outlets = Object.keys(stage.outputs).filter((name) => !wiredTo({ outlet: name }));
+  const outlets = stage.outlets.filter((name) => !wiredTo({ outlet: name }));
   if (outlets.length) problems.push({ kind: 'outlet', outlets });
   const types = Object.keys(stage.tray).filter((type) => remaining(board, stage, type) > 0);
   if (types.length) problems.push({ kind: 'tray', types });

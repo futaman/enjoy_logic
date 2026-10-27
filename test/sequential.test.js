@@ -6,7 +6,8 @@ import { addPart, connect, createBoard, flowLevels, liveSequence, ruleProblems }
 import { CHARACTERS } from '../src/characters.js';
 import { ALL_DOG_FORMS, DOG_FORMS, RARE_DOG_FORMS, dogFormFor, dogReaction, gateLine } from '../src/reactions.js';
 
-const stage = (no) => ALL_STAGES.find((s) => s.no === no);
+// 番号は組み合わせ回路編の数で変わるので、名前で探す
+const stage = (title) => SEQUENTIAL_STAGES.find((s) => s.title === title);
 
 for (const s of SEQUENTIAL_STAGES) {
   test(`順序${s.no}（${s.title}）：参考解が全部の拍で正解になり、仕掛け箱の中身ちょうどで作れる`, () => {
@@ -32,19 +33,19 @@ test('ししおどしは、1拍前の水を出す（最初の拍は水なし）'
 });
 
 test('ししおどしを通せば、出口を入口に戻してもぐるぐるにならない（1拍おきに 1 と 0）', () => {
-  const s = stage(20);
+  const s = stage('1拍おき');
   assert.deepEqual(simulate(s.solution, s).map((beat) => beat.outputs.d1), s.mouth.d1.map(Boolean));
 });
 
 test('拍ごとの蛇口と、パクパク君が欲しいもの', () => {
-  const s = stage(18);
+  const s = stage('ししおどし');
   assert.deepEqual(faucetsAt(s, 3), { A: true });
   assert.deepEqual(expectedAt(s, 1), { d1: true });
   assert.deepEqual(expectedAt(s, 2), { d1: false });
 });
 
 test('違う回路は、最初に合わなかった拍を返す', () => {
-  const s = stage(18); // 1拍おくれが正解。直接つなぐと1拍目で口を閉じているのに水が来る
+  const s = stage('ししおどし'); // 1拍おくれが正解。直接つなぐと1拍目で口を閉じているのに水が来る
   const direct = { gates: [], outputs: { d1: { input: 'A' } } };
   const result = checkSequence(direct, s);
   assert.equal(result.ok, false);
@@ -53,7 +54,7 @@ test('違う回路は、最初に合わなかった拍を返す', () => {
 });
 
 test('盤面でも拍ごとに水の様子が出て、ししおどしは水の出発点として扱う', () => {
-  const s = stage(18);
+  const s = stage('ししおどし');
   let board = addPart(createBoard(), 'DFF', 300, 100);
   board = connect(board, { faucet: 'A' }, { part: 'p1', pin: 'in0' });
   board = connect(board, { part: 'p1', pin: 'out' }, { outlet: 'd1' });

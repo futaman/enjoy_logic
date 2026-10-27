@@ -56,8 +56,7 @@ test('入口の数が合わない仕掛けは受け付けない', () => {
 
 for (const stage of COMBINATIONAL_STAGES) {
   test(`ステージ${stage.no}（${stage.title}）の参考解が正解になる`, () => {
-    const faucets = { ...stage.faucets, ...stage.solution.faucets };
-    assert.deepEqual(checkCircuit(stage.solution, stage, faucets), { ok: true });
+    assert.deepEqual(checkCircuit(stage.solution, stage), { ok: true });
   });
 
   test(`ステージ${stage.no}（${stage.title}）の参考解は、仕掛け箱の中身ちょうどで作れる`, () => {
@@ -67,18 +66,26 @@ for (const stage of COMBINATIONAL_STAGES) {
   });
 }
 
-test('違う回路は、出口ごとの値を返す', () => {
-  const stage = COMBINATIONAL_STAGES[5]; // カタブツは動かない（A 開、B 閉）
+test('違う回路は、最初にうまくいかなかった時間と、出口ごとの値を返す', () => {
+  const stage = COMBINATIONAL_STAGES.find((s) => s.no === 6); // カタブツ（朝 A 開 B 閉 → おやじ）
   const wrong = {
     gates: [{ id: 'g1', type: 'OR', inputs: [{ input: 'A' }, { input: 'B' }] }],
-    outputs: { f1: { input: 'A' }, o1: { gate: 'g1' } },
+    outputs: { b1: { gate: 'g1' } },
   };
   const result = checkCircuit(wrong, stage);
   assert.equal(result.ok, false);
-  assert.deepEqual(result.expected, { f1: true, o1: false });
-  assert.deepEqual(result.actual, { f1: true, o1: true });
+  assert.equal(result.time, 0);
+  assert.deepEqual(result.expected, { b1: false });
+  assert.deepEqual(result.actual, { b1: true });
 });
 
-test('出口のキャラが仕様：花は1、おやじは0', () => {
-  assert.deepEqual(expectedOf({ outputs: { f1: 'flower', o1: 'oyaji' } }), { f1: true, o1: false });
+test('全部の時間で合わないと正解にならない（1つの時間だけ合ってもだめ）', () => {
+  const stage = COMBINATIONAL_STAGES.find((s) => s.no === 6); // 朝・昼はおやじ、夜は花
+  const onlyA = { gates: [{ id: 'g1', type: 'AND', inputs: [{ input: 'A' }, { input: 'A' }] }], outputs: { b1: { gate: 'g1' } } };
+  // 夜は合うが、朝におやじに水がかかる
+  assert.deepEqual(checkCircuit(onlyA, stage).time, 0);
+});
+
+test('花だんのキャラが仕様：花は1、おやじは0', () => {
+  assert.deepEqual(expectedOf({ outputs: { b1: 'flower', b2: 'oyaji' } }), { b1: true, b2: false });
 });
