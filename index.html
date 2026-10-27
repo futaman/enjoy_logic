@@ -129,38 +129,39 @@
         linear-gradient(#24305e 0 32%, #4f7d3c 32%);
     }
 
-    /* 予定表 */
+    /* 予定表：列が時間（朝・昼… または 1拍目・2拍目…）、行が蛇口・出口・結果。列をタップでその時間の庭 */
     #schedule-title { margin: 0; font-size: 14px; font-weight: 800; color: var(--muted); cursor: pointer; }
-    #schedule { overflow-x: auto; }
-    #schedule table { border-collapse: separate; border-spacing: 0 4px; font-weight: 800; font-size: 14px; }
-    #schedule th, #schedule td { padding: 2px 8px; text-align: center; white-space: nowrap; }
-    #schedule tr:first-child th { font-size: 12px; color: var(--muted); }
-    #schedule tr[data-time] { cursor: pointer; }
-    #schedule tr[data-time] > * { background: var(--card); border-top: 3px solid var(--ink); border-bottom: 3px solid var(--ink); }
-    #schedule tr[data-time] > :first-child { border-left: 3px solid var(--ink); border-radius: 14px 0 0 14px; }
-    #schedule tr[data-time] > :last-child { border-right: 3px solid var(--ink); border-radius: 0 14px 14px 0; }
-    #schedule tr.now > * { background: #fff2b3; }
-    #schedule svg { width: 26px; height: 26px; vertical-align: middle; overflow: visible; margin-right: 2px; }
-    #schedule .tap { color: var(--muted); }
-    #schedule .tap.open { color: var(--water); }
-    #schedule .who.oyaji { color: var(--ng); }
-    #schedule .result { min-width: 40px; }
-    .time-mark {
-      display: inline-flex;
+    #schedule { overflow-x: auto; padding: 4px 2px 6px; }
+    #schedule table { border-collapse: separate; border-spacing: 4px; font-weight: 800; font-size: 13px; }
+    #schedule th, #schedule td { padding: 0; text-align: center; white-space: nowrap; }
+    #schedule th.row-name { padding-right: 6px; text-align: left; font-size: 12px; color: var(--muted); }
+    #schedule .cell {
+      display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
-      width: 26px;
-      height: 26px;
-      border-radius: 50%;
-      border: 3px solid var(--ink);
-      color: #fff;
-      font-weight: 900;
+      min-width: 52px;
+      min-height: 40px;
+      padding: 2px 4px;
+      border: 2px solid var(--ink);
+      border-radius: 10px;
+      background: var(--card);
+      box-shadow: 0 2px 0 var(--ink);
+      cursor: pointer;
     }
+    #schedule .cell svg { width: 22px; height: 22px; overflow: visible; }
+    #schedule .cell.head { background: #f1ebe0; flex-direction: row; gap: 2px; }
+    #schedule .cell.open { background: var(--water); color: #fff; }
+    #schedule .cell.closed { background: #e9dcc5; color: var(--muted); }
+    #schedule .cell.oyaji { color: var(--ng); }
+    #schedule .cell.mouth-open { background: #ffe0e8; }
+    #schedule .cell.mouth-shut { background: #eee; color: var(--muted); }
+    #schedule .cell.result { min-height: 32px; border-style: dashed; background: transparent; box-shadow: none; }
+    #schedule td.now .cell { border-color: var(--water); box-shadow: 0 3px 0 var(--water); }
+    #schedule td.now .cell.head { background: #fff2b3; }
     @media (max-width: 480px) {
-      #schedule table { font-size: 12px; }
-      #schedule th, #schedule td { padding: 2px 3px; }
-      #schedule svg { width: 20px; height: 20px; }
-      #schedule .result { min-width: 30px; }
+      #schedule .cell { min-width: 40px; font-size: 12px; }
+      #schedule .cell svg { width: 18px; height: 18px; }
     }
     .time-mark.ok { background: var(--ok); }
     .time-mark.ng { background: var(--ng); }
@@ -432,6 +433,10 @@
       animation: pop-text 1.2s cubic-bezier(0.3, 1.6, 0.5, 1) forwards;
     }
     .pop-text.grow { color: #ff8fb1; }
+    .pop-text.kakon { color: #8fd16a; left: 8%; right: auto; top: 6%; font-size: 36px; }
+    /* ししおどし：カコンと傾いて、ためていた水を流す */
+    .part.kakon .tube { animation: kakon 0.45s ease-in-out; transform-origin: 20px 15px; }
+    @keyframes kakon { 0% { transform: rotate(0); } 40% { transform: rotate(-28deg); } 100% { transform: rotate(0); } }
     @keyframes pop-text {
       0% { transform: scale(0.2) rotate(-20deg); opacity: 0; }
       25% { transform: scale(1.2) rotate(-8deg); opacity: 1; }
@@ -559,12 +564,14 @@
     #stage-list { list-style: none; padding: 0; display: grid; gap: 10px; }
     #stage-list button { width: 100%; text-align: left; min-height: 52px; }
     #stage-list button:disabled { color: #9a8c80; }
+    #stage-list li.section { margin-top: 10px; font-size: 18px; font-weight: 900; }
+    #zukan h2 + .zukan-list { margin-bottom: 12px; }
     #zukan { margin-top: 20px; padding: 12px 14px; border-radius: 18px; background: var(--card); border: 3px solid var(--ink); }
     #zukan h2 { margin: 0 0 8px; font-size: 18px; }
-    #zukan-list { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
-    #zukan-list li { display: grid; justify-items: center; gap: 2px; padding: 6px; border-radius: 12px; background: #fff; border: 2px solid var(--ink); font-size: 12px; font-weight: 800; text-align: center; }
-    #zukan-list li svg { width: 54px; height: 54px; overflow: visible; }
-    #zukan-list li.unknown svg { filter: brightness(0) opacity(0.25); }
+    #zukan .zukan-list { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+    #zukan .zukan-list li { display: grid; justify-items: center; gap: 2px; padding: 6px; border-radius: 12px; background: #fff; border: 2px solid var(--ink); font-size: 12px; font-weight: 800; text-align: center; }
+    #zukan .zukan-list li svg { width: 54px; height: 54px; overflow: visible; }
+    #zukan .zukan-list li.unknown svg { filter: brightness(0) opacity(0.25); }
     #settings { margin-top: 12px; font-weight: 800; display: flex; gap: 8px; align-items: center; }
     #settings input { width: 22px; height: 22px; }
 
@@ -672,6 +679,26 @@
     #oyaji-show.seiza .big-oyaji { animation: nod 1s ease-in-out infinite; }
     @keyframes nod { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(6deg) translateY(6px); } }
     #oyaji-show.calm .big-oyaji, #oyaji-show.calm .clone-one { animation-duration: 0.01s !important; animation-iteration-count: 1 !important; }
+
+    /* パクパク君：かみつく（画面に飛びかかってくる）／悲しそうに見つめる（じわじわ迫る） */
+    #oyaji-show.bite .big-oyaji { animation: lunge 0.9s cubic-bezier(0.2, 1.4, 0.4, 1) forwards; }
+    #oyaji-show.bite .bark { animation: rage 0.1s linear infinite; }
+    @keyframes lunge {
+      0% { transform: scale(0.4) translateY(30%); }
+      45% { transform: scale(1.7) rotate(-4deg); }
+      55% { transform: scale(1.6) rotate(4deg); }
+      65% { transform: scale(1.7) rotate(-3deg); }
+      100% { transform: scale(1.65) rotate(0); }
+    }
+    #oyaji-show.sad .burst { background: repeating-conic-gradient(from 0deg, #bfd8ff 0 7deg, #9fb9e8 7deg 14deg); animation-duration: 20s; }
+    #oyaji-show.sad .big-oyaji { animation: stare 2.4s ease-out forwards; }
+    #oyaji-show.sad .tear { animation: tear 0.8s ease-in infinite; }
+    @keyframes stare { 0% { transform: scale(0.8); } 100% { transform: scale(1.35); } }
+    @keyframes tear { 0% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(6px); opacity: 0; } }
+    #oyaji-show.dog-show.cerberus .burst, #oyaji-show.dog-show.dragon .burst { background: repeating-conic-gradient(from 0deg, #3a2e2a 0 7deg, #a51f2c 7deg 14deg); }
+    #oyaji-show.dog-show.sad.cerberus .burst, #oyaji-show.dog-show.sad.dragon .burst { background: repeating-conic-gradient(from 0deg, #4a5a7a 0 7deg, #2e3a55 7deg 14deg); }
+    .outlet .dog.bite { animation: rage 0.12s linear infinite; }
+    .outlet .dog.sad .tear { animation: tear 0.8s ease-in infinite; }
 
     /* 画面全体の揺れ（設定で弱められる） */
     body.shake { animation: body-shake 0.12s linear 12; }
@@ -815,7 +842,9 @@
     <p><button id="back">もどる</button></p>
     <section id="zukan">
       <h2>おやじ図鑑　<span id="zukan-count"></span></h2>
-      <ul id="zukan-list"></ul>
+      <ul id="zukan-list" class="zukan-list"></ul>
+      <h2>パクパク君図鑑　<span id="dog-zukan-count"></span></h2>
+      <ul id="dog-zukan-list" class="zukan-list"></ul>
       <label id="settings"><input type="checkbox" id="calm"> 画面のゆれと点滅を弱める</label>
     </section>
   </section>

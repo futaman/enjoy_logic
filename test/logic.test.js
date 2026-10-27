@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { allRows, checkCircuit, expectedOf, evaluate } from '../src/logic.js';
-import { COMBINATIONAL_STAGES } from '../src/stages.js';
+import { ALL_STAGES as COMBINATIONAL_STAGES } from '../src/stages.js';
 
 test('基本の仕掛けは真理値表どおりに動く', () => {
   const cases = [

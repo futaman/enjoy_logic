@@ -1,5 +1,5 @@
 // ステージごとのチュートリアル。手順は上から順に、できたら印が付く。
-// done には、今の盤面の様子（board、cleared、timesSeen：見た予定表の時間）を渡す。
+// done には、今の盤面の様子（board、cleared、timesSeen：見た予定表の時間）を渡す。キーはステージの番号。
 export const TUTORIALS = {
   1: [
     {
@@ -46,6 +46,30 @@ export const TUTORIALS = {
     },
     {
       text: '「準備完了（実行）」で、朝 → 夜の順に水を流して確かめよう。',
+      done: (s) => s.cleared,
+    },
+  ],
+  13: [
+    {
+      text: '上の予定表を見よう。パクパク君が「あーん」と口を開ける拍と、蛇口Aが開く拍は同じ。列をタップすると、その拍の庭が見られるよ。',
+      done: (s) => s.timesSeen.length >= 2,
+    },
+    {
+      text: '蛇口Aとパクパク君をつないで、「準備完了（実行）」で1拍ずつ確かめよう。',
+      done: (s) => s.cleared,
+    },
+  ],
+  16: [
+    {
+      text: 'ししおどしを置いて、蛇口A → ししおどし → パクパク君、とつなごう。',
+      done: (s) => s.board.parts.some((part) => part.type === 'DFF') && s.board.wires.length >= 2,
+    },
+    {
+      text: '予定表の列を順にタップして、水が1拍おくれて出てくるのを見てみよう。',
+      done: (s) => s.timesSeen.length >= 3,
+    },
+    {
+      text: '「準備完了（実行）」で確かめよう。',
       done: (s) => s.cleared,
     },
   ],
