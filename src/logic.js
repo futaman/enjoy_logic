@@ -102,67 +102,47 @@ export function allRows(inputNames) {
   );
 }
 
-// 時間（予定表の1回ぶん）の呼び名。1つのステージは、朝・昼・夕方・夜のうち決まった時間に水を流す。
+// 時間（予定表の1回ぶん）の呼び名。組み合わせ回路編は朝・昼・夕方・夜のうち決まった時間に水を流す。
+// 順序回路編は、ししおどしが「カコン」と鳴るたびに進む「拍」（time は 'beat'。呼び名は timeLabel）。
 export const TIME_NAMES = { morning: '朝', noon: '昼', evening: '夕方', night: '夜' };
 
-// 出口（花だん）ごとの「正しい答え」。花は水が欲しい（1）、おやじは水をかけない（0）。
-// time はステージの予定表の1回ぶん（{ time, faucets, outputs }）。
+export function timeLabel(stage, index) {
+  const time = stage.times[index];
+  return time.time === 'beat' ? `${index + 1}拍目` : TIME_NAMES[time.time];
+}
+
+// 出口にいるキャラ。花（水が欲しい＝1）、おやじ（水をかけない＝0）、
+// パクパク君は口を開けている（'open'＝1）か閉じている（'shut'＝0）か。
+export const WANTS_WATER = { flower: true, oyaji: false, open: true, shut: false };
+export const characterOf = (kind) => (kind === 'open' || kind === 'shut' ? 'dog' : kind);
+
+// 出口ごとの「正しい答え」。time はステージの予定表の1回ぶん（{ time, faucets, outputs }）。
 export function expectedOf(time) {
-  return Object.fromEntries(Object.entries(time.outputs).map(([name, kind]) => [name, kind === 'flower']));
+  return Object.fromEntries(Object.entries(time.outputs).map(([name, kind]) => [name, WANTS_WATER[kind]]));
 }
 
-// 予定表の時間を順に回路を動かし、出口ごとの答えと比べる。
-// 全部の時間で合えば { ok: true }、違う時間があれば、最初の時間とその出口ごとの値を返す。
-export function checkCircuit(circuit, stage) {
-  for (const [index, time] of stage.times.entries()) {
-    const expected = expectedOf(time);
-    const actual = evaluate(circuit, time.faucets);
-    const same = Object.keys(expected).every((name) => expected[name] === actual[name]);
-    if (!same) return { ok: false, time: index, expected, actual };
-  }
-  return { ok: true };
-}
-
-// ---------- 順序回路編（拍ごとに進む） ----------
-
-// 拍 beat の蛇口の開け方。順序回路編の蛇口は、拍ごとの開け閉めの並び（1 が開）。
-export function faucetsAt(stage, beat) {
-  return Object.fromEntries(Object.entries(stage.faucets).map(([name, row]) => [name, Boolean(row[beat])]));
-}
-
-// 拍 beat に出口ごとに欲しいもの。パクパク君は口を開けている拍だけ水が欲しい。
-export function expectedAt(stage, beat) {
-  return Object.fromEntries(
-    Object.entries(stage.outputs).map(([name, kind]) => [
-      name,
-      kind === 'dog' ? Boolean(stage.mouth[name][beat]) : kind === 'flower',
-    ]),
-  );
-}
-
-// 1拍目から最後の拍まで回路を動かす。拍ごとの { faucets, gates, outputs, dff } を返す。
-// ししおどしは、初めは水をためていない。
+// 予定表の時間を順に回路を動かす。時間ごとの { faucets, gates, outputs, dff } を返す。
+// ししおどしは、前の時間に入口へ来た水を次の時間に出す（初めは水をためていない）。
+// ししおどしのない回路では、時間ごとに別々に動かすのと同じになる。
 export function simulate(circuit, stage) {
   let dff = {};
-  return Array.from({ length: stage.beats }, (_, beat) => {
-    const faucets = faucetsAt(stage, beat);
-    const { gates, outputs, next } = solve(circuit, faucets, dff);
-    const result = { faucets, gates, outputs, dff };
+  return stage.times.map((time) => {
+    const { gates, outputs, next } = solve(circuit, time.faucets, dff);
+    const result = { faucets: time.faucets, gates, outputs, dff };
     dff = next;
     return result;
   });
 }
 
-// 拍ごとに、パクパク君の口と水が合っているかを確かめる。
-// 全部合えば { ok: true }、最初に合わなかった拍を { ok: false, beat, expected, actual } で返す。
-export function checkSequence(circuit, stage) {
-  const beats = simulate(circuit, stage);
-  for (let beat = 0; beat < beats.length; beat++) {
-    const expected = expectedAt(stage, beat);
-    const actual = beats[beat].outputs;
-    if (Object.keys(expected).some((name) => expected[name] !== actual[name])) {
-      return { ok: false, beat, expected, actual };
-    }
+// 予定表の時間を順に、出口ごとの答えと比べる。
+// 全部の時間で合えば { ok: true }、違う時間があれば、最初の時間とその出口ごとの値を返す。
+export function checkCircuit(circuit, stage) {
+  const results = simulate(circuit, stage);
+  for (const [index, time] of stage.times.entries()) {
+    const expected = expectedOf(time);
+    const actual = results[index].outputs;
+    const same = Object.keys(expected).every((name) => expected[name] === actual[name]);
+    if (!same) return { ok: false, time: index, expected, actual };
   }
   return { ok: true };
 }

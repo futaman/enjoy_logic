@@ -15,7 +15,7 @@ import {
   wirePaths,
   LAYOUT,
 } from '../src/board.js';
-import { COMBINATIONAL_STAGES } from '../src/stages.js';
+import { ALL_STAGES as COMBINATIONAL_STAGES } from '../src/stages.js';
 
 const stage = (no) => COMBINATIONAL_STAGES.find((s) => s.no === no);
 const A = { faucet: 'A' };

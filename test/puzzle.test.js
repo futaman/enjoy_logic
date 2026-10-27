@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { COMBINATIONAL_STAGES } from '../src/stages.js';
+import { ALL_STAGES as COMBINATIONAL_STAGES } from '../src/stages.js';
 import { addPart, checkBoard, connect, createBoard, ruleProblems } from '../src/board.js';
 import { GATE_ARITY } from '../src/logic.js';
 import { describe, expandTray, findSolution, knownGates, shortcuts } from '../tools/solver.js';

@@ -129,38 +129,39 @@
         linear-gradient(#24305e 0 32%, #4f7d3c 32%);
     }
 
-    /* 予定表 */
+    /* 予定表：列が時間（朝・昼… または 1拍目・2拍目…）、行が蛇口・出口・結果。列をタップでその時間の庭 */
     #schedule-title { margin: 0; font-size: 14px; font-weight: 800; color: var(--muted); cursor: pointer; }
-    #schedule { overflow-x: auto; }
-    #schedule table { border-collapse: separate; border-spacing: 0 4px; font-weight: 800; font-size: 14px; }
-    #schedule th, #schedule td { padding: 2px 8px; text-align: center; white-space: nowrap; }
-    #schedule tr:first-child th { font-size: 12px; color: var(--muted); }
-    #schedule tr[data-time] { cursor: pointer; }
-    #schedule tr[data-time] > * { background: var(--card); border-top: 3px solid var(--ink); border-bottom: 3px solid var(--ink); }
-    #schedule tr[data-time] > :first-child { border-left: 3px solid var(--ink); border-radius: 14px 0 0 14px; }
-    #schedule tr[data-time] > :last-child { border-right: 3px solid var(--ink); border-radius: 0 14px 14px 0; }
-    #schedule tr.now > * { background: #fff2b3; }
-    #schedule svg { width: 26px; height: 26px; vertical-align: middle; overflow: visible; margin-right: 2px; }
-    #schedule .tap { color: var(--muted); }
-    #schedule .tap.open { color: var(--water); }
-    #schedule .who.oyaji { color: var(--ng); }
-    #schedule .result { min-width: 40px; }
-    .time-mark {
-      display: inline-flex;
+    #schedule { overflow-x: auto; padding: 4px 2px 6px; }
+    #schedule table { border-collapse: separate; border-spacing: 4px; font-weight: 800; font-size: 13px; }
+    #schedule th, #schedule td { padding: 0; text-align: center; white-space: nowrap; }
+    #schedule th.row-name { padding-right: 6px; text-align: left; font-size: 12px; color: var(--muted); }
+    #schedule .cell {
+      display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
-      width: 26px;
-      height: 26px;
-      border-radius: 50%;
-      border: 3px solid var(--ink);
-      color: #fff;
-      font-weight: 900;
+      min-width: 52px;
+      min-height: 40px;
+      padding: 2px 4px;
+      border: 2px solid var(--ink);
+      border-radius: 10px;
+      background: var(--card);
+      box-shadow: 0 2px 0 var(--ink);
+      cursor: pointer;
     }
+    #schedule .cell svg { width: 22px; height: 22px; overflow: visible; }
+    #schedule .cell.head { background: #f1ebe0; flex-direction: row; gap: 2px; }
+    #schedule .cell.open { background: var(--water); color: #fff; }
+    #schedule .cell.closed { background: #e9dcc5; color: var(--muted); }
+    #schedule .cell.oyaji { color: var(--ng); }
+    #schedule .cell.mouth-open { background: #ffe0e8; }
+    #schedule .cell.mouth-shut { background: #eee; color: var(--muted); }
+    #schedule .cell.result { min-height: 32px; border-style: dashed; background: transparent; box-shadow: none; }
+    #schedule td.now .cell { border-color: var(--water); box-shadow: 0 3px 0 var(--water); }
+    #schedule td.now .cell.head { background: #fff2b3; }
     @media (max-width: 480px) {
-      #schedule table { font-size: 12px; }
-      #schedule th, #schedule td { padding: 2px 3px; }
-      #schedule svg { width: 20px; height: 20px; }
-      #schedule .result { min-width: 30px; }
+      #schedule .cell { min-width: 40px; font-size: 12px; }
+      #schedule .cell svg { width: 18px; height: 18px; }
     }
     .time-mark.ok { background: var(--ok); }
     .time-mark.ng { background: var(--ng); }
@@ -565,37 +566,6 @@
     #stage-list button:disabled { color: #9a8c80; }
     #stage-list li.section { margin-top: 10px; font-size: 18px; font-weight: 900; }
     #zukan h2 + .zukan-list { margin-bottom: 12px; }
-
-    /* 順序回路編のタイムライン：拍ごとの蛇口とパクパク君の口 */
-    #timeline {
-      padding: 8px;
-      overflow-x: auto;
-      border-radius: 18px;
-      border: 3px solid var(--ink);
-      background: var(--card);
-      display: grid;
-      gap: 4px;
-    }
-    .tl-row { display: flex; align-items: center; gap: 4px; }
-    .tl-name { flex: 0 0 82px; font-size: 13px; font-weight: 900; white-space: nowrap; }
-    .tl-cell {
-      flex: 0 0 44px;
-      min-width: 44px;
-      min-height: 36px;
-      padding: 0;
-      font-size: 12px;
-      border-width: 2px;
-      border-radius: 10px;
-      box-shadow: 0 2px 0 var(--ink);
-    }
-    .tl-cell.beat { background: #f1ebe0; }
-    .tl-cell.w1 { background: var(--water); color: #fff; }
-    .tl-cell.w0 { background: #e9dcc5; color: var(--muted); }
-    .tl-cell.mouth.open { background: #ffe0e8; }
-    .tl-cell.mouth.shut { background: #eee; color: var(--muted); }
-    .tl-cell.mouth.ok { outline: 3px solid var(--ok); }
-    .tl-cell.mouth.ng { outline: 3px solid var(--ng); background: #ffd0d0; }
-    .tl-cell.now { transform: translateY(-3px); box-shadow: 0 5px 0 var(--water); border-color: var(--water); }
     #zukan { margin-top: 20px; padding: 12px 14px; border-radius: 18px; background: var(--card); border: 3px solid var(--ink); }
     #zukan h2 { margin: 0 0 8px; font-size: 18px; }
     #zukan .zukan-list { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
@@ -823,7 +793,6 @@
 
   <main id="game">
     <section>
-      <div id="timeline" hidden></div>
       <p id="schedule-title">予定表</p>
       <div id="schedule"></div>
 

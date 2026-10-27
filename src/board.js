@@ -1,6 +1,6 @@
 // 庭の上の仕掛けと水路の状態。画面からは独立しているので、テストで直接動かせる。
 // 状態はすべて新しい値を返す（元の盤面は変えない）。元に戻す機能に使うため。
-import { GATE_ARITY, checkCircuit, checkSequence, simulate, solve } from './logic.js';
+import { GATE_ARITY, checkCircuit, simulate, solve } from './logic.js';
 
 // 庭の大きさと置き場所（画面の単位は px）。仕掛けが2つまでのステージの大きさ。
 export const LAYOUT = {
@@ -200,25 +200,20 @@ export function sanitizeBoard(board, stage) {
   return { parts, wires };
 }
 
-// 蛇口の開け方ごとに、仕掛けの出力・出口・水路に水が流れているかを返す。
+// 蛇口の開け方（とししおどしがためている水）で、仕掛けの出力・出口・水路に水が流れているかを返す。
 export function liveState(board, stage, faucets, dffState = {}) {
   const { gates, outputs } = solve(toCircuit(board, stage), faucets, dffState);
   const valueOfEnd = (end) => ('faucet' in end ? faucets[end.faucet] : gates[end.part]);
   return { gates, outputs, wires: board.wires.map((wire) => valueOfEnd(wire.from)) };
 }
 
-// 順序回路編：拍ごとの水の様子（liveState と同じ形に、その拍の蛇口 faucets を足したもの）。
-// 水路がぐるぐる回るときは例外になる。
-export function liveSequence(board, stage) {
-  return simulate(toCircuit(board, stage), stage).map((beat) => ({
-    ...liveState(board, stage, beat.faucets, beat.dff),
-    faucets: beat.faucets,
+// 予定表の時間ごとの水の様子（liveState と同じ形に、その時間の蛇口 faucets を足したもの）。
+// ししおどしがためた水は、次の時間に持ちこす。水路がぐるぐる回るときは例外になる。
+export function liveTimes(board, stage) {
+  return simulate(toCircuit(board, stage), stage).map((time) => ({
+    ...liveState(board, stage, time.faucets, time.dff),
+    faucets: time.faucets,
   }));
-}
-
-// 順序回路編の判定。拍ごとにパクパク君の口と水を比べる。
-export function checkSequenceBoard(board, stage) {
-  return checkSequence(toCircuit(board, stage), stage);
 }
 
 // 水が届く順番。蛇口が0、仕掛けは入口に来る水のうち一番遅いもの＋1、

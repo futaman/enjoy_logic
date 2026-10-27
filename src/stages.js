@@ -1,4 +1,4 @@
-// 組み合わせ回路編のステージ（仕様書「論理回路まなびゲーム 仕様書（第2版）」より）。
+// ステージ（仕様書「論理回路まなびゲーム 仕様書（第2版）」より）。まず組み合わせ回路編。
 // 1つのステージは、予定表（times）の時間ごとに1回ずつ水を流す。時間は朝・昼・夕方・夜のうち1〜4回。
 // 予定表は画面に前もって出ていて、どの時間に何が変わるかがわかる。全部の時間でうまくいけばクリア。
 //   times[].time は時間（'morning' 朝 / 'noon' 昼 / 'evening' 夕方 / 'night' 夜）。並びは時間の順。
@@ -212,19 +212,25 @@ const STAGES = [
   },
 ];
 
-// 順序回路編のステージ。時間がししおどしの「カコン」で1拍ずつ進む。
-//   beats は拍の数。faucets は蛇口ごとの、拍ごとの開け閉めの並び（1 が開。ステージで決まっている）。
-//   outputs の 'dog' はパクパク君。mouth は拍ごとの口の開け閉め（1 が開＝水が欲しい、0 が閉＝水はダメ）。
-//   準備完了を押すと、1拍目から順に水を流して確かめる。全部の拍は最初からタイムラインで見えている。
+// 順序回路編のステージ。予定表の時間は「拍」で、ししおどしが「カコン」と鳴るたびに次の拍へ進む。
+// 出口にいるのはパクパク君。拍ごとに口を開ける（'open'＝水が欲しい＝1）か閉じる（'shut'＝水はダメ＝0）。
+// 予定表は beats() で、蛇口と口の開け閉めを '1'（開）と '0'（閉）の並びで書く。
+//   accepted は、検証で見つかっても認める別解（仕掛け箱に入っていない仕掛けを使う別解で、遊ぶ人は使えないもの）。
+function beats(faucets, mouths) {
+  const length = Object.values(faucets)[0].length;
+  return Array.from({ length }, (_, i) => ({
+    time: 'beat',
+    faucets: Object.fromEntries(Object.entries(faucets).map(([name, row]) => [name, row[i] === '1'])),
+    outputs: Object.fromEntries(Object.entries(mouths).map(([name, row]) => [name, row[i] === '1' ? 'open' : 'shut'])),
+  }));
+}
+
 const SEQUENTIAL = [
   {
     title: 'パクパク君',
     mission: 'パクパク君は、口を開けている拍だけ水が欲しい。蛇口とタイミングを合わせよう',
     lesson: '時間で変わる水（1と0の並び）',
-    beats: 8,
-    faucets: { A: [1, 0, 1, 1, 0, 0, 1, 0] },
-    outputs: { d1: 'dog' },
-    mouth: { d1: [1, 0, 1, 1, 0, 0, 1, 0] },
+    times: beats({ A: '10110010' }, { d1: '10110010' }),
     tray: {},
     intro: ['dog'],
     solution: { gates: [], outputs: { d1: { input: 'A' } } },
@@ -233,10 +239,7 @@ const SEQUENTIAL = [
     title: 'あまのじゃくなごはん',
     mission: '蛇口とパクパク君の口が、いつも逆。天野君で合わせよう',
     lesson: 'NOT を時間の並びに使う',
-    beats: 8,
-    faucets: { A: [1, 1, 0, 1, 0, 0, 1, 1] },
-    outputs: { d1: 'dog' },
-    mouth: { d1: [0, 0, 1, 0, 1, 1, 0, 0] },
+    times: beats({ A: '11010011' }, { d1: '00101100' }),
     tray: { NOT: 1 },
     intro: [],
     solution: {
@@ -248,10 +251,7 @@ const SEQUENTIAL = [
     title: 'カタブツの時間',
     mission: '蛇口が2つ。両方開いている拍だけ、パクパク君が口を開ける',
     lesson: 'AND を時間の並びに使う',
-    beats: 8,
-    faucets: { A: [1, 0, 1, 1, 0, 1, 1, 0], B: [0, 0, 1, 1, 1, 1, 0, 1] },
-    outputs: { d1: 'dog' },
-    mouth: { d1: [0, 0, 1, 1, 0, 1, 0, 0] },
+    times: beats({ A: '10110110', B: '00111101' }, { d1: '00110100' }),
     tray: { AND: 1 },
     intro: [],
     solution: {
@@ -263,10 +263,7 @@ const SEQUENTIAL = [
     title: 'ししおどし',
     mission: 'パクパク君の口は、蛇口より1拍おそい。ししおどしで水を1拍おくらせよう',
     lesson: 'ししおどし（フリップフロップ）＝1拍前の水をおぼえる',
-    beats: 8,
-    faucets: { A: [1, 0, 0, 1, 1, 0, 1, 0] },
-    outputs: { d1: 'dog' },
-    mouth: { d1: [0, 1, 0, 0, 1, 1, 0, 1] },
+    times: beats({ A: '10011010' }, { d1: '01001101' }),
     tray: { DFF: 1 },
     intro: ['DFF'],
     solution: {
@@ -278,10 +275,7 @@ const SEQUENTIAL = [
     title: '2拍おくれ',
     mission: '今度は2拍おそい。ししおどしを2つ使おう',
     lesson: 'ししおどしをつなげる（シフトレジスタ）',
-    beats: 8,
-    faucets: { A: [1, 1, 0, 0, 1, 0, 1, 0] },
-    outputs: { d1: 'dog' },
-    mouth: { d1: [0, 0, 1, 1, 0, 0, 1, 0] },
+    times: beats({ A: '11001010' }, { d1: '00110010' }),
     tray: { DFF: 2 },
     intro: [],
     solution: {
@@ -296,10 +290,7 @@ const SEQUENTIAL = [
     title: '1拍おき',
     mission: '蛇口は閉じたまま。パクパク君は1拍おきに口を開ける。ししおどしと天野君で作ろう',
     lesson: '自分の出口を入口に戻す（1拍おきに 1 と 0）',
-    beats: 8,
-    faucets: { A: [0, 0, 0, 0, 0, 0, 0, 0] },
-    outputs: { d1: 'dog' },
-    mouth: { d1: [1, 0, 1, 0, 1, 0, 1, 0] },
+    times: beats({ A: '00000000' }, { d1: '10101010' }),
     tray: { DFF: 1, NOT: 1 },
     intro: [],
     solution: {
@@ -314,10 +305,7 @@ const SEQUENTIAL = [
     title: '2拍つづけて',
     mission: '蛇口が2拍つづけて開いたときだけ、パクパク君が口を開ける',
     lesson: '今の水と1拍前の水を、カタブツでくらべる',
-    beats: 8,
-    faucets: { A: [1, 1, 0, 1, 1, 1, 0, 1] },
-    outputs: { d1: 'dog' },
-    mouth: { d1: [0, 1, 0, 0, 1, 1, 0, 0] },
+    times: beats({ A: '11011101' }, { d1: '01001100' }),
     tray: { DFF: 1, AND: 1 },
     intro: [],
     solution: {
@@ -332,12 +320,13 @@ const SEQUENTIAL = [
     title: '開けた瞬間だけ',
     mission: '蛇口を開けた最初の拍だけ、パクパク君が口を開ける。開けっぱなしの間は閉じている',
     lesson: '今は開いていて、1拍前は閉じていた（立ち上がりを見つける）',
-    beats: 8,
-    faucets: { A: [0, 1, 1, 1, 0, 1, 1, 0] },
-    outputs: { d1: 'dog' },
-    mouth: { d1: [0, 1, 0, 0, 0, 1, 0, 0] },
+    // 「閉・閉」と続く拍を入れておく。ないと、天野君を通した水をししおどしで1拍おくらせるだけで解けてしまう
+    times: beats({ A: '00010111' }, { d1: '00010100' }),
     tray: { DFF: 1, NOT: 1, AND: 1 },
     intro: [],
+    // A かつ「1拍前でない」は、A と「A かつ1拍前」の多様性好き（XOR）でも作れる。どんな並びでも成り立つ別解だが、
+    // 仕掛け箱に多様性好きは入っていないので、遊ぶ人はこの別解を使えない
+    accepted: [{ type: 'NOT', change: 'XORに替える' }],
     solution: {
       gates: [
         { id: 'g1', type: 'DFF', inputs: [{ input: 'A' }] },
@@ -349,25 +338,18 @@ const SEQUENTIAL = [
   },
 ];
 
-// no はステージの番号、inputs は蛇口の名前の並び（画面の上から）、outlets は花だん（出口）の名前の並び。どの時間でも同じ。
-// kind は 'comb'（組み合わせ回路編）か 'seq'（順序回路編）。
-export const COMBINATIONAL_STAGES = STAGES.map((stage, i) => ({
+// no はステージの番号（組み合わせ回路編から続けて数える）、inputs は蛇口の名前の並び（画面の上から）、
+// outlets は出口の名前の並び。どの時間でも同じ。kind は 'comb'（組み合わせ回路編）か 'seq'（順序回路編）。
+const withDefaults = (kind, offset) => (stage, i) => ({
   hidden: false,
+  accepted: [],
   ...stage,
-  kind: 'comb',
-  no: i + 1,
+  kind,
+  no: offset + i + 1,
   inputs: Object.keys(stage.times[0].faucets),
   outlets: Object.keys(stage.times[0].outputs),
-}));
+});
 
-// 順序回路編の番号は、組み合わせ回路編から続けて数える。
-export const SEQUENTIAL_STAGES = SEQUENTIAL.map((stage, i) => ({
-  hidden: false,
-  ...stage,
-  kind: 'seq',
-  no: COMBINATIONAL_STAGES.length + i + 1,
-  inputs: Object.keys(stage.faucets),
-  outlets: Object.keys(stage.outputs),
-}));
-
+export const COMBINATIONAL_STAGES = STAGES.map(withDefaults('comb', 0));
+export const SEQUENTIAL_STAGES = SEQUENTIAL.map(withDefaults('seq', COMBINATIONAL_STAGES.length));
 export const ALL_STAGES = [...COMBINATIONAL_STAGES, ...SEQUENTIAL_STAGES];

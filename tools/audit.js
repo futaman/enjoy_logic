@@ -3,7 +3,7 @@
 // 見ること：
 //   1. 解けるか（仕掛け箱の仕掛けを全部使って、予定表の全部の時間でうまくいく回路があるか）
 //   2. 仕掛け箱の仕掛けが全部要るか（1つ抜く、またはそれまでに出てきた別の仕掛けに替えると解けないか）
-import { COMBINATIONAL_STAGES } from '../src/stages.js';
+import { ALL_STAGES as COMBINATIONAL_STAGES } from '../src/stages.js';
 import { describe, expandTray, findSolution, knownGates, shortcuts } from './solver.js';
 
 let failed = 0;
