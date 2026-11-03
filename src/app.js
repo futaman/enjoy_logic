@@ -19,12 +19,13 @@ import { CHARACTERS } from './characters.js';
 import { TIME_NAMES, characterOf, expectedOf, timeLabel } from './logic.js';
 import {
   layoutOf,
-  FAUCETS,
   PART_NAMES,
   addPart,
+  boxPosition,
   connect,
   createBoard,
   disconnect,
+  fillTallPositions,
   findPart,
   flowLevels,
   isSource,
@@ -34,7 +35,6 @@ import {
   pinsOf,
   remaining,
   removePart,
-  rowTop,
   ruleProblems,
   sanitizeBoard,
   wirePaths,
@@ -60,6 +60,7 @@ const DEFAULT_SPEED = 'slow';
 // ステージは前のステージをクリアすると開く。開発や確認のときは、URL の末尾に ?all を付けると全部選べる。
 const UNLOCK_ALL_STAGES = new URLSearchParams(window.location.search).has('all');
 const MIN_SCALE = 0.8; // 文字が読める最小の大きさ（小さい画面では横にスクロールして庭を動かす）
+const TALL_BELOW = 600; // 庭の幅がこれより狭い（スマホ）ときは、縦長の庭にする（水は上から下へ）
 const MAX_SCALE = 1.3;
 
 const $ = (selector) => document.querySelector(selector);
@@ -84,6 +85,7 @@ const state = {
   reveal: null, // 水をたどって見せている途中の段（null のときは全部見せる）
   revealToken: 0,
   run: null, // 実行の結果 { kind, host, message, growth, wilt, problems }
+  tall: false, // 縦長の庭で見せているか（幅のせまい画面）
   baseScale: 1,
   zoom: 1,
   tutorialOpen: false,
@@ -99,7 +101,7 @@ const state = {
 
 const currentStage = () => ALL_STAGES[state.stageIndex];
 const currentTime = () => currentStage().times[state.timeIndex];
-const layout = () => layoutOf(currentStage()); // 今のステージの庭の大きさ
+const layout = () => layoutOf(currentStage(), state.tall ? 'tall' : 'wide'); // 今のステージの庭の大きさと向き
 
 // 保存できなくても遊べるように、読み書きは try で囲む。
 function loadProgress() {
@@ -167,11 +169,20 @@ function setScale(scale) {
   $('#garden-box').style.height = `${L.height * scale}px`;
 }
 
+// 庭の向きを、画面の幅で決める。せまい画面は縦長の庭にする。
+// 縦長の庭での置き場所がない仕掛け（PC で置いたものなど）には、ここで置き場所を決める。
+function chooseOrientation() {
+  state.tall = wrap.clientWidth > 0 && wrap.clientWidth < TALL_BELOW;
+  garden.classList.toggle('tall', state.tall);
+  if (state.tall) state.board = fillTallPositions(state.board, currentStage());
+}
+
 // 幅に合わせる（小さい画面では最小の大きさまで）。拡大・縮小はこの大きさの0.5〜2倍。
-// 大きい画面でも、下のボタンや仕掛け箱が見えるように、画面の高さの6割までにする。
+// 横長の庭は、大きい画面でも下のボタンや仕掛け箱が見えるように、画面の高さの6割までにする。
+// 縦長の庭は幅いっぱいに合わせる（縦はページごとスクロールして見る）。
 function fitWidth(minimum = MIN_SCALE) {
   const byWidth = wrap.clientWidth / layout().width;
-  const byHeight = (window.innerHeight * 0.6) / layout().height;
+  const byHeight = state.tall ? Infinity : (window.innerHeight * 0.6) / layout().height;
   state.baseScale = Math.max(Math.min(byWidth, byHeight, MAX_SCALE), minimum);
   state.zoom = 1;
   setScale(state.baseScale);
@@ -224,6 +235,7 @@ function openStage(index) {
   // 初めてのステージは、チュートリアルを開いておく
   state.tutorialOpen = Boolean(TUTORIALS[stage.no]) && !stageProgress(stage.no).tutorialSeen;
   showScreen('game');
+  chooseOrientation();
   fitWidth();
   render();
   // 初めて出てくるキャラは、紹介カードで説明する
@@ -589,6 +601,8 @@ function veiled(stage) {
 
 function render() {
   const stage = currentStage();
+  // undo などで戻した盤面にも、縦長の庭での置き場所を付ける
+  if (state.tall) state.board = fillTallPositions(state.board, stage);
   // 見えない庭では、水を流すまで水路の水を見せない（蛇口の開け閉めは見せる）
   const live = veiled(stage) ? null : currentLive();
   wrap.classList.toggle('veiled', veiled(stage));
@@ -627,7 +641,7 @@ function renderTutorial(stage) {
 
 // 端のピン。タップ・ドラッグで水路を引く場所。
 function pinHtml(stage, end, wet) {
-  const p = pinPosition(stage, state.board, end);
+  const p = pinPosition(stage, state.board, end, layout());
   const key = JSON.stringify(end);
   const pending = state.pending && JSON.stringify(state.pending) === key ? 'pending' : '';
   return `<div class="pin ${wet ? 'wet' : ''} ${pending}" data-end="${encodeURIComponent(key)}" style="left:${p.x}px;top:${p.y}px"></div>`;
@@ -707,9 +721,9 @@ function renderGarden(stage, live) {
 
   stage.inputs.forEach((name) => {
     const open = Boolean(state.faucets[name]);
-    const top = rowTop(FAUCETS.indexOf(name));
+    const box = boxPosition(stage, state.board, { faucet: name }, layout());
     boxes.push(
-      `<div class="box faucet ${open ? 'open' : ''}" data-faucet="${name}" style="left:${layout().faucetX}px;top:${top}px">${faucetIcon(open)}<span class="label"><span class="name">蛇口${name}</span><span class="sub">${open ? '開いている' : '閉じている'}</span></span></div>`,
+      `<div class="box faucet ${open ? 'open' : ''}" data-faucet="${name}" style="left:${box.x}px;top:${box.y}px">${faucetIcon(open)}<span class="label"><span class="name">蛇口${name}</span><span class="sub">${open ? '開いている' : '閉じている'}</span></span></div>`,
     );
     pins.push(pinHtml(stage, { faucet: name }, open));
   });
@@ -758,6 +772,7 @@ function renderGarden(stage, live) {
     }
     if (wilt) say = `<span class="say pop sad">${wilt.shout}</span>`;
     const grow = growth ? `--grow:${growth.scale}` : '';
+    const place = boxPosition(stage, state.board, { outlet: name }, layout());
     const mark = state.marks && !state.judging
       ? `<span class="mark ${state.marks[name] ? 'ok' : 'ng'}">${state.marks[name] ? '○' : '×'}</span>`
       : '';
@@ -773,12 +788,13 @@ function renderGarden(stage, live) {
       problemOutlets.includes(name) ? 'problem' : '',
     ];
     boxes.push(
-      `<div class="${classes.join(' ')}" data-outlet="${name}" style="left:${layout().outletX}px;top:${rowTop(index)}px;${grow}">${picture}<span class="label"><span class="name">${outletLabel(stage, name)}</span><span class="sub">${goal}</span></span>${mark}${say}</div>`,
+      `<div class="${classes.join(' ')}" data-outlet="${name}" style="left:${place.x}px;top:${place.y}px;${grow}">${picture}<span class="label"><span class="name">${outletLabel(stage, name)}</span><span class="sub">${goal}</span></span>${mark}${say}</div>`,
     );
     pins.push(pinHtml(stage, { outlet: name }, Boolean(water)));
   });
 
   state.board.parts.forEach((part) => {
+    const place = boxPosition(stage, state.board, { part: part.id }, layout());
     const half = levels ? 2 * levels.parts[part.id] : 0;
     const wet = reached(half) && Boolean(live?.gates[part.id]);
     const classes = [
@@ -799,13 +815,13 @@ function renderGarden(stage, live) {
       if (boom && arriving(half)) classes.push('collide');
     }
     boxes.push(
-      `<div class="${classes.join(' ')}" data-part="${part.id}" style="left:${part.x}px;top:${part.y}px">${partIcon(part, live)}<span class="label"><span class="name">${part.type}</span><span class="sub">${PART_NAMES[part.type]}</span></span>${say}</div>`,
+      `<div class="${classes.join(' ')}" data-part="${part.id}" style="left:${place.x}px;top:${place.y}px">${partIcon(part, live)}<span class="label"><span class="name">${part.type}</span><span class="sub">${PART_NAMES[part.type]}</span></span>${say}</div>`,
     );
     pinsOf(part.type).forEach((pin) => pins.push(pinHtml(stage, { part: part.id, pin }, false)));
     pins.push(pinHtml(stage, { part: part.id, pin: 'out' }, wet));
   });
 
-  const paths = wirePaths(stage, state.board);
+  const paths = wirePaths(stage, state.board, layout());
   const wires = state.board.wires
     .map((wire, i) => {
       const { d } = paths[i];
@@ -826,7 +842,7 @@ function renderGarden(stage, live) {
 
   // 花に続けて水をやれると、庭がひまわりの森になる
   wrap.classList.toggle('forest', state.run?.kind === 'ok' && state.run.growth >= 4);
-  const L = layoutOf(stage);
+  const L = layout();
   garden.innerHTML = `<svg id="wires" width="${L.width}" height="${L.height}" viewBox="0 0 ${L.width} ${L.height}">${wires}</svg>${boxes.join('')}${pins.join('')}`;
 }
 
@@ -999,7 +1015,7 @@ function drawTempWire(end, event) {
     path.setAttribute('class', 'temp');
     svg.append(path);
   }
-  const a = pinPosition(currentStage(), state.board, end);
+  const a = pinPosition(currentStage(), state.board, end, layout());
   const b = gardenPoint(event);
   path.setAttribute('d', `M${a.x} ${a.y} L${b.x} ${b.y}`);
 }
@@ -1184,7 +1200,7 @@ wrap.addEventListener('pointerdown', (event) => {
     drag = { kind: 'wire', end: readEnd(pinEl) };
   } else if (partEl) {
     const part = findPart(state.board, partEl.dataset.part);
-    drag = { kind: 'part', id: part.id, origin: { x: part.x, y: part.y }, el: partEl };
+    drag = { kind: 'part', id: part.id, origin: boxPosition(currentStage(), state.board, { part: part.id }, layout()), el: partEl };
   } else if (faucetEl) {
     drag = { kind: 'card', key: 'faucet' };
   } else if (outletEl) {
@@ -1275,6 +1291,7 @@ $('#calm').addEventListener('change', (event) => {
 });
 $('#back').addEventListener('click', () => {
   showScreen('game');
+  chooseOrientation();
   fitWidth();
   render();
 });
@@ -1291,7 +1308,11 @@ $('#to-menu').addEventListener('click', () => {
   showScreen('select');
 });
 window.addEventListener('resize', () => {
-  if (!$('#game').hidden) fitWidth();
+  if ($('#game').hidden) return;
+  // 画面を回したときなど、幅が変わったら庭の向きも選び直す
+  chooseOrientation();
+  fitWidth();
+  render();
 });
 
 $('#logo-cast').innerHTML = `${flowerIcon('bloom')}${gateIcon('NOT')}${oyajiIcon('sleep')}${hostIcon()}${flowerIcon('sun')}`;
