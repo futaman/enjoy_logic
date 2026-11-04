@@ -14,6 +14,10 @@ import {
   layoutOf,
   wirePaths,
   LAYOUT,
+  boxPosition,
+  fillTallPositions,
+  movePart,
+  pinPosition,
 } from '../src/board.js';
 import { ALL_STAGES as COMBINATIONAL_STAGES } from '../src/stages.js';
 
@@ -231,4 +235,83 @@ test('同じ出口から分かれた水路は、同じ縦の線を通ってよ�
   const board = build([['NOT', 400, 160], ['NOT', 400, 160]], [[A, pin('p1', 'in0')], [A, pin('p2', 'in0')]]);
   const [first, second] = wirePaths(s, board);
   assert.equal(first.x, second.x);
+});
+
+// ---------- 縦長の庭（スマホ） ----------
+
+test('縦長の庭：蛇口が上、出口が下に並び、スマホの幅に収まる', () => {
+  const s = stage(12); // 蛇口2つ、花だん2つ、仕掛け4つ
+  const T = layoutOf(s, 'tall');
+  assert.equal(T.orientation, 'tall');
+  assert.ok(T.width <= 360, `${T.width}`);
+  const a = boxPosition(s, createBoard(), A, T);
+  const b = boxPosition(s, createBoard(), B, T);
+  const outlet = boxPosition(s, createBoard(), out('b1'), T);
+  assert.equal(a.y, b.y);
+  assert.ok(b.x >= a.x + T.partWidth, '蛇口が横に並ぶ');
+  assert.ok(outlet.y > T.gateBottom, '出口は仕掛けの段より下');
+  assert.ok(T.height >= outlet.y + T.partHeight);
+  // 段は3段まで（ステージ20の3つ続きが置ける）
+  assert.equal(T.rows, 3);
+});
+
+test('縦長の庭：出口は箱の下、入口は箱の上。水路は下へ出て、曲がって、上から入る', () => {
+  const s = stage(7);
+  const T = layoutOf(s, 'tall');
+  let board = addPart(createBoard(), 'AND', 20, T.gateTop, T);
+  board = connect(board, A, pin('p1', 'in0'));
+  const faucet = boxPosition(s, board, A, T);
+  assert.deepEqual(pinPosition(s, board, A, T), { x: faucet.x + T.partWidth / 2, y: faucet.y + T.partHeight });
+  const part = boxPosition(s, board, { part: 'p1' }, T);
+  const in0 = pinPosition(s, board, pin('p1', 'in0'), T);
+  const in1 = pinPosition(s, board, pin('p1', 'in1'), T);
+  assert.equal(in0.y, part.y);
+  assert.ok(in0.x < in1.x);
+  assert.equal(pinPosition(s, board, outPin('p1'), T).y, part.y + T.partHeight);
+  const [path] = wirePaths(s, board, T);
+  assert.match(path.d, /^M\S+ \S+ V\S+ H\S+ V\S+$/);
+});
+
+test('縦長の庭で置いた仕掛けは、横長の庭での置き場所も持つ。動かすのは今の向きだけ', () => {
+  const s = stage(7);
+  const T = layoutOf(s, 'tall');
+  const W = layoutOf(s);
+  let board = addPart(createBoard(), 'NOT', 100, T.gateTop + 20, T);
+  const placed = board.parts[0];
+  assert.deepEqual(placed.tall, { x: 100, y: T.gateTop + 20 });
+  assert.ok(placed.x >= 150 && placed.x <= W.outletX - 30 - W.partWidth);
+  assert.ok(placed.y >= 10 && placed.y <= W.height - W.partHeight - 10);
+  board = movePart(board, 'p1', 40, T.gateTop, T);
+  assert.deepEqual(board.parts[0].tall, { x: 40, y: T.gateTop });
+  assert.equal(board.parts[0].x, placed.x, '横長の置き場所はそのまま');
+  board = movePart(board, 'p1', 300, 200, W);
+  assert.deepEqual(board.parts[0].tall, { x: 40, y: T.gateTop }, '縦長の置き場所はそのまま');
+});
+
+test('横長の庭で置いた仕掛けには、縦長の庭で水の流れる順に重ならない置き場所が付く', () => {
+  const s = stage(12);
+  const T = layoutOf(s, 'tall');
+  const board = build(
+    [['NOT', 300, 40], ['NOT', 300, 190], ['AND', 450, 40], ['OR', 450, 190]],
+    [
+      [A, pin('p1', 'in0')],
+      [B, pin('p2', 'in0')],
+      [outPin('p1'), pin('p3', 'in0')],
+      [outPin('p2'), pin('p3', 'in1')],
+      [outPin('p1'), pin('p4', 'in0')],
+      [outPin('p2'), pin('p4', 'in1')],
+    ],
+  );
+  const filled = fillTallPositions(board, s);
+  const spots = filled.parts.map((part) => part.tall);
+  for (let i = 0; i < spots.length; i++) {
+    for (let j = i + 1; j < spots.length; j++) {
+      const apart = Math.abs(spots[i].x - spots[j].x) >= T.partWidth || Math.abs(spots[i].y - spots[j].y) >= T.partHeight;
+      assert.ok(apart, `${i} と ${j} が重なる`);
+    }
+  }
+  // 天野君（1段目の水）は、カタブツ・イエスマン（2段目の水）より上
+  assert.ok(spots[0].y < spots[2].y && spots[1].y < spots[3].y);
+  // 全部に置き場所があれば、同じ盤面のまま
+  assert.equal(fillTallPositions(filled, s), filled);
 });

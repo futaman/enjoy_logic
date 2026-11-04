@@ -3,7 +3,13 @@
 import { GATE_ARITY, checkCircuit, simulate, solve } from './logic.js';
 
 // 庭の大きさと置き場所（画面の単位は px）。仕掛けが2つまでのステージの大きさ。
+// 庭には2つの向きがある。
+//   'wide'（横長）：蛇口が左、出口が右に縦に並び、水は左から右へ流れる。PC・タブレット向け
+//   'tall'（縦長）：蛇口が上、出口が下に横に並び、水は上から下へ流れる。幅のせまいスマホ向け。
+//     横長の庭を縮めると文字や絵が小さくなりすぎるので、ほぼそのままの大きさで見せられる形にする
+// 仕掛けの置き場所は向きごとに持つ（横長は part.x・part.y、縦長は part.tall）。
 export const LAYOUT = {
+  orientation: 'wide',
   width: 700,
   height: 480,
   partWidth: 120,
@@ -19,10 +25,47 @@ export const LAYOUT = {
 // 出口は右端に寄せる。
 const EXTRA_WIDTH_PER_PART = 160;
 
-export function layoutOf(stage) {
-  const parts = Object.values(stage.tray).reduce((sum, count) => sum + count, 0);
-  const width = LAYOUT.width + EXTRA_WIDTH_PER_PART * Math.max(0, parts - 2);
-  return { ...LAYOUT, width, outletX: width - (LAYOUT.width - LAYOUT.outletX) };
+const partCount = (stage) => Object.values(stage.tray).reduce((sum, count) => sum + count, 0);
+
+// 縦長の庭。仕掛けの段は、仕掛けの数だけ（ただし3段まで）用意して、水の流れる順に1段ずつ置けるようにする。
+// 今のステージでは、水が通る仕掛けは多くても3つ続き（ステージ20）なので、3段あれば足りる。
+const TALL = {
+  partWidth: 130,
+  partHeight: 56,
+  margin: 12, // 左右の余白
+  columnGap: 30, // 横に並べた箱どうしの間
+  faucetY: 16,
+  rowGap: 60, // 蛇口の段・仕掛けの段・出口の段の間
+  rowStep: 116, // 仕掛けの段どうしの間（箱の高さ＋水路を通すすき間）
+  bottom: 28, // 出口の下の余白（○×の印やふきだしの分）
+};
+
+export function layoutOf(stage, orientation = 'wide') {
+  const wideWidth = LAYOUT.width + EXTRA_WIDTH_PER_PART * Math.max(0, partCount(stage) - 2);
+  const wide = { ...LAYOUT, width: wideWidth, outletX: wideWidth - (LAYOUT.width - LAYOUT.outletX) };
+  if (orientation !== 'tall') return wide;
+  const T = TALL;
+  const columns = Math.max(2, stage.inputs.length, stage.outlets.length);
+  const rows = Math.min(3, Math.max(1, partCount(stage)));
+  const gateTop = T.faucetY + T.partHeight + T.rowGap;
+  const gateBottom = gateTop + (rows - 1) * T.rowStep;
+  const outletY = partCount(stage) === 0 ? gateTop + T.rowGap : gateBottom + T.partHeight + T.rowGap;
+  const width = 2 * T.margin + columns * T.partWidth + (columns - 1) * T.columnGap;
+  // count 個の箱を、columns 列の真ん中にそろえて並べたときの i 番目の左端
+  const columnX = (i, count) => T.margin + ((columns - count) / 2 + i) * (T.partWidth + T.columnGap);
+  return {
+    ...T,
+    orientation: 'tall',
+    width,
+    height: outletY + T.partHeight + T.bottom,
+    columns,
+    rows,
+    gateTop,
+    gateBottom,
+    outletY,
+    columnX,
+    wide, // 縦長で置いた仕掛けに、横長での置き場所も付けるときに使う
+  };
 }
 
 export const FAUCETS = ['A', 'B', 'C'];
@@ -66,23 +109,78 @@ export function remaining(board, stage, type) {
 const snap = (value) => Math.round(value / SNAP) * SNAP;
 const clampX = (x, L) => Math.min(Math.max(x, 150), L.outletX - 30 - L.partWidth);
 const clampY = (y, L) => Math.min(Math.max(y, 10), L.height - L.partHeight - 10);
+// 縦長の庭で仕掛けを置ける範囲：蛇口の段と出口の段の間
+const clampTall = (x, y, T) => ({
+  x: Math.round(Math.min(Math.max(x, 4), T.width - T.partWidth - 4)),
+  y: Math.round(Math.min(Math.max(y, T.faucetY + T.partHeight + 20), T.outletY - T.partHeight - 20)),
+});
+
+// 縦長の庭の置き場所を、横長の庭の置き場所に置きかえる（縦と横を入れかえて、範囲を合わせる）。
+function wideFromTall(pos, T) {
+  const W = T.wide;
+  const along = T.gateBottom > T.gateTop ? (pos.y - T.gateTop) / (T.gateBottom - T.gateTop) : 0;
+  const across = (pos.x - T.margin) / Math.max(1, T.width - 2 * T.margin - T.partWidth);
+  const x0 = 150;
+  const x1 = W.outletX - 30 - W.partWidth;
+  return { x: x0 + Math.min(Math.max(along, 0), 1) * (x1 - x0), y: 10 + Math.min(Math.max(across, 0), 1) * (W.height - W.partHeight - 20) };
+}
 
 function nextPartId(board) {
   const largest = board.parts.reduce((max, part) => Math.max(max, Number(part.id.slice(1))), 0);
   return `p${largest + 1}`;
 }
 
-// layout は庭の大きさ（layoutOf(stage)）。仕掛けが庭からはみ出さないようにする。
+// layout は庭の大きさ（layoutOf(stage, 向き)）。x・y はその向きの庭での位置。仕掛けが庭からはみ出さないようにする。
+// 縦長の庭で置いたときは、横長の庭での置き場所も付けておく（あとで PC で開いても置き場所がある）。
 export function addPart(board, type, x, y, layout = LAYOUT) {
-  const part = { id: nextPartId(board), type, x: clampX(snap(x), layout), y: clampY(snap(y), layout) };
+  let part;
+  if (layout.orientation === 'tall') {
+    const tall = clampTall(x, y, layout);
+    const wide = wideFromTall(tall, layout);
+    part = { id: nextPartId(board), type, x: clampX(snap(wide.x), layout.wide), y: clampY(snap(wide.y), layout.wide), tall };
+  } else {
+    part = { id: nextPartId(board), type, x: clampX(snap(x), layout), y: clampY(snap(y), layout) };
+  }
   return { ...board, parts: [...board.parts, part] };
 }
 
+// 動かすのは、今の向きの庭での置き場所だけ（もう一方の向きの置き場所は変えない）。
 export function movePart(board, id, x, y, layout = LAYOUT) {
-  const parts = board.parts.map((part) =>
-    part.id === id ? { ...part, x: clampX(snap(x), layout), y: clampY(snap(y), layout) } : part,
-  );
+  const parts = board.parts.map((part) => {
+    if (part.id !== id) return part;
+    if (layout.orientation === 'tall') return { ...part, tall: clampTall(x, y, layout) };
+    return { ...part, x: clampX(snap(x), layout), y: clampY(snap(y), layout) };
+  });
   return { ...board, parts };
+}
+
+// 縦長の庭での置き場所がない仕掛け（横長の庭で置いたもの）に、置き場所を決める。
+// 水の流れる順（flowLevels）に、上の段から空いているところへ並べる。全部あるときは同じ盤面を返す。
+export function fillTallPositions(board, stage) {
+  if (board.parts.every((part) => part.tall)) return board;
+  const T = layoutOf(stage, 'tall');
+  const levels = flowLevels(board, stage)?.parts ?? {};
+  const taken = board.parts.filter((part) => part.tall).map((part) => part.tall);
+  const free = (pos) =>
+    taken.every((other) => Math.abs(other.x - pos.x) >= T.partWidth + 10 || Math.abs(other.y - pos.y) >= T.partHeight + 20);
+  const slots = [];
+  for (let row = 0; row < T.rows; row++) {
+    for (let column = 0; column < T.columns; column++) slots.push({ row, x: T.columnX(column, T.columns), y: T.gateTop + row * T.rowStep });
+  }
+  const order = board.parts
+    .filter((part) => !part.tall)
+    .sort((a, b) => (levels[a.id] ?? 1) - (levels[b.id] ?? 1) || a.x - b.x || a.y - b.y);
+  const placed = new Map();
+  for (const part of order) {
+    // 水の流れる順の段から探しはじめ、空いていなければ下の段、それでもなければ上の段
+    const want = Math.min(T.rows - 1, Math.max(0, (levels[part.id] ?? 1) - 1));
+    const ranked = [...slots].sort((a, b) => (a.row >= want ? a.row - want : 100 + want - a.row) - (b.row >= want ? b.row - want : 100 + want - b.row));
+    const slot = ranked.find((candidate) => free(candidate)) ?? ranked[0];
+    const pos = { x: Math.round(slot.x), y: slot.y };
+    taken.push(pos);
+    placed.set(part.id, pos);
+  }
+  return { ...board, parts: board.parts.map((part) => (placed.has(part.id) ? { ...part, tall: placed.get(part.id) } : part)) };
 }
 
 // 仕掛けを消すと、つながっていた水路もいっしょに消える。
@@ -111,49 +209,65 @@ export function disconnect(board, to) {
   return { ...board, wires: board.wires.filter((wire) => !sameEnd(wire.to, to)) };
 }
 
-// 画面上の端の位置（水路の始点・終点、ピンの置き場所）。
-export function pinPosition(stage, board, end) {
-  const L = layoutOf(stage);
-  if ('faucet' in end) {
-    return { x: L.faucetX + L.faucetWidth, y: rowTop(FAUCETS.indexOf(end.faucet)) + 25 };
+// 蛇口・出口・仕掛けの箱の左上の位置。L は庭の大きさ（layoutOf(stage, 向き)）。
+export function boxPosition(stage, board, item, L = layoutOf(stage)) {
+  if (L.orientation === 'tall') {
+    if ('faucet' in item) return { x: L.columnX(stage.inputs.indexOf(item.faucet), stage.inputs.length), y: L.faucetY };
+    if ('outlet' in item) return { x: L.columnX(stage.outlets.indexOf(item.outlet), stage.outlets.length), y: L.outletY };
+    const part = findPart(board, item.part);
+    return part.tall ?? { x: L.margin, y: L.gateTop };
   }
-  if ('outlet' in end) {
-    return { x: L.outletX, y: rowTop(stage.outlets.indexOf(end.outlet)) + 25 };
-  }
-  const part = findPart(board, end.part);
-  if (end.pin === 'out') return { x: part.x + L.partWidth, y: part.y + 25 };
-  const pins = pinsOf(part.type);
-  const offsets = pins.length === 1 ? [25] : [15, 35];
-  return { x: part.x, y: part.y + offsets[pins.indexOf(end.pin)] };
+  if ('faucet' in item) return { x: L.faucetX, y: rowTop(FAUCETS.indexOf(item.faucet)) };
+  if ('outlet' in item) return { x: L.outletX, y: rowTop(stage.outlets.indexOf(item.outlet)) };
+  const part = findPart(board, item.part);
+  return { x: part.x, y: part.y };
 }
 
-// 水路の通り道。蛇口や仕掛けの出口から横へ出て、途中で縦に曲がり、入口へ横から入る。
-// 曲がる場所は始点と終点の真ん中。ただし、別の水が流れる縦の線と重なりそうなときは、
+// 画面上の端の位置（水路の始点・終点、ピンの置き場所）。
+// 横長の庭は、出口が箱の右、入口が箱の左。縦長の庭は、出口が箱の下、入口が箱の上。
+export function pinPosition(stage, board, end, L = layoutOf(stage)) {
+  const box = boxPosition(stage, board, end, L);
+  const w = L.partWidth;
+  const h = L.partHeight;
+  const tall = L.orientation === 'tall';
+  if (isSource(end)) return tall ? { x: box.x + w / 2, y: box.y + h } : { x: box.x + w, y: box.y + h / 2 };
+  const pins = 'outlet' in end ? ['in'] : pinsOf(findPart(board, end.part).type);
+  const index = 'outlet' in end ? 0 : pins.indexOf(end.pin);
+  const share = pins.length === 1 ? 0.5 : [0.3, 0.7][index];
+  return tall ? { x: box.x + w * share, y: box.y } : { x: box.x, y: box.y + h * share };
+}
+
+// 水路の通り道。出口から水の流れる向き（横長は横、縦長は下）へ出て、途中で曲がり、入口へ同じ向きから入る。
+// 曲がる場所は始点と終点の真ん中。ただし、別の水が流れる線と重なりそうなときは、
 // 少しずつずらして見分けられるようにする（同じ出口から分かれた水路は重なってよい）。
+// lane（横長では x とも呼ぶ）は、曲がってから進む線の位置。
 const LANE_GAP = 14;
 
-export function wirePaths(stage, board) {
-  const lanes = []; // 置いた縦の線 { x, top, bottom, from }
+export function wirePaths(stage, board, L = layoutOf(stage)) {
+  const tall = L.orientation === 'tall';
+  // 流れる向きを u、それと直角の向きを v として、横長でも縦長でも同じ計算にする
+  const u = (p) => (tall ? p.y : p.x);
+  const v = (p) => (tall ? p.x : p.y);
+  const lanes = []; // 置いた線 { at, low, high, from }
   return board.wires.map((wire) => {
-    const a = pinPosition(stage, board, wire.from);
-    const b = pinPosition(stage, board, wire.to);
-    const top = Math.min(a.y, b.y);
-    const bottom = Math.max(a.y, b.y);
+    const a = pinPosition(stage, board, wire.from, L);
+    const b = pinPosition(stage, board, wire.to, L);
+    const low = Math.min(v(a), v(b));
+    const high = Math.max(v(a), v(b));
     const from = JSON.stringify(wire.from);
-    const base = Math.round((a.x + b.x) / 2);
-    const clash = (x) =>
-      lanes.some(
-        (lane) => lane.from !== from && Math.abs(lane.x - x) < LANE_GAP && lane.top <= bottom && top <= lane.bottom,
-      );
-    let x = base;
-    if (a.y !== b.y) {
-      // 真ん中から右・左へ交互にずらして、空いている場所を探す
-      for (let step = 1; step <= 12 && clash(x); step++) {
-        x = base + Math.ceil(step / 2) * LANE_GAP * (step % 2 ? 1 : -1);
+    const base = Math.round((u(a) + u(b)) / 2);
+    const clash = (at) =>
+      lanes.some((lane) => lane.from !== from && Math.abs(lane.at - at) < LANE_GAP && lane.low <= high && low <= lane.high);
+    let at = base;
+    if (v(a) !== v(b)) {
+      // 真ん中から前・後ろへ交互にずらして、空いている場所を探す
+      for (let step = 1; step <= 12 && clash(at); step++) {
+        at = base + Math.ceil(step / 2) * LANE_GAP * (step % 2 ? 1 : -1);
       }
-      lanes.push({ x, top, bottom, from });
+      lanes.push({ at, low, high, from });
     }
-    return { a, b, x, d: `M${a.x} ${a.y} H${x} V${b.y} H${b.x}` };
+    const d = tall ? `M${a.x} ${a.y} V${at} H${b.x} V${b.y}` : `M${a.x} ${a.y} H${at} V${b.y} H${b.x}`;
+    return { a, b, x: at, lane: at, d };
   });
 }
 
